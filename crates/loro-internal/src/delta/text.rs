@@ -1,10 +1,9 @@
 use std::sync::Arc;
 
 use fxhash::FxHashMap;
-use loro_common::{InternalString, LoroValue, PeerID};
+use loro_common::{InternalString, Lamport, LoroValue, PeerID};
 use serde::{Deserialize, Serialize};
 
-use crate::change::Lamport;
 use crate::container::richtext::{Style, Styles};
 use crate::ToJson;
 

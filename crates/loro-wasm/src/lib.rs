@@ -2,12 +2,11 @@
 use convert::resolved_diff_to_js;
 use js_sys::{Array, Object, Promise, Reflect, Uint8Array};
 use loro_internal::{
-    change::Lamport,
     configure::{StyleConfig, StyleConfigMap},
     container::{richtext::ExpandType, ContainerID},
     event::Index,
     handler::{ListHandler, MapHandler, TextDelta, TextHandler, TreeHandler, ValueOrContainer},
-    id::{Counter, TreeID, ID},
+    id::{Lamport, TreeID, ID},
     obs::SubID,
     version::Frontiers,
     ContainerType, DiffEvent, LoroDoc, LoroValue, VersionVector as InternalVersionVector,
@@ -150,7 +149,7 @@ fn ids_to_frontiers(ids: Vec<JsID>) -> JsResult<Frontiers> {
 
 fn js_id_to_id(id: JsID) -> Result<ID, JsValue> {
     let peer = Reflect::get(&id, &"peer".into())?.as_string().unwrap();
-    let counter = Reflect::get(&id, &"counter".into())?.as_f64().unwrap() as Counter;
+    let counter = Reflect::get(&id, &"counter".into())?.as_f64().unwrap() as Lamport;
     let id = ID::new(
         peer.parse()
             .map_err(|_e| JsValue::from_str(&format!("cannot parse {} to PeerID", peer)))?,
@@ -164,7 +163,7 @@ fn frontiers_to_ids(frontiers: &Frontiers) -> Vec<JsID> {
     for id in frontiers.iter() {
         let obj = Object::new();
         Reflect::set(&obj, &"peer".into(), &id.peer.to_string().into()).unwrap();
-        Reflect::set(&obj, &"counter".into(), &id.counter.into()).unwrap();
+        Reflect::set(&obj, &"counter".into(), &id.lamport.into()).unwrap();
         let value: JsValue = obj.into_js_result().unwrap();
         ans.push(value.into());
     }
@@ -192,7 +191,7 @@ fn js_value_to_container_id(
 #[derive(Debug, Clone, Serialize)]
 struct StringID {
     peer: String,
-    counter: Counter,
+    counter: Lamport,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -200,7 +199,7 @@ struct ChangeMeta {
     lamport: Lamport,
     length: u32,
     peer: String,
-    counter: Counter,
+    counter: Lamport,
     deps: Vec<StringID>,
     timestamp: f64,
 }
@@ -871,13 +870,13 @@ impl Loro {
                     lamport: change.lamport(),
                     length: change.atom_len() as u32,
                     peer: change.peer().to_string(),
-                    counter: change.id().counter,
+                    counter: change.id().lamport,
                     deps: change
                         .deps()
                         .iter()
                         .map(|dep| StringID {
                             peer: dep.peer.to_string(),
-                            counter: dep.counter,
+                            counter: dep.lamport,
                         })
                         .collect(),
                     timestamp: change.timestamp() as f64,
@@ -904,13 +903,13 @@ impl Loro {
             lamport: change.lamport(),
             length: change.atom_len() as u32,
             peer: change.peer().to_string(),
-            counter: change.id().counter,
+            counter: change.id().lamport,
             deps: change
                 .deps()
                 .iter()
                 .map(|dep| StringID {
                     peer: dep.peer.to_string(),
-                    counter: dep.counter,
+                    counter: dep.lamport,
                 })
                 .collect(),
             timestamp: change.timestamp() as f64,
@@ -923,7 +922,7 @@ impl Loro {
     pub fn get_change_at_lamport(
         &self,
         peer_id: &str,
-        lamport: u32,
+        lamport: Lamport,
     ) -> JsResult<JsChangeOrUndefined> {
         let borrow_mut = &self.0;
         let oplog = borrow_mut.oplog().lock().unwrap();
@@ -936,13 +935,13 @@ impl Loro {
             lamport: change.lamport(),
             length: change.atom_len() as u32,
             peer: change.peer().to_string(),
-            counter: change.id().counter,
+            counter: change.id().lamport,
             deps: change
                 .deps()
                 .iter()
                 .map(|dep| StringID {
                     peer: dep.peer.to_string(),
-                    counter: dep.counter,
+                    counter: dep.lamport,
                 })
                 .collect(),
             timestamp: change.timestamp() as f64,
@@ -2240,7 +2239,7 @@ impl VersionVector {
             let key = Reflect::get(&pair, &0.into()).unwrap_throw();
             let peer_id = key.as_string().expect_throw("PeerID must be string");
             let value = Reflect::get(&pair, &1.into()).unwrap_throw();
-            let counter = value.as_f64().expect_throw("Invalid counter") as Counter;
+            let counter = value.as_f64().expect_throw("Invalid counter") as Lamport;
             vv.insert(
                 peer_id
                     .parse()
@@ -2275,7 +2274,7 @@ impl VersionVector {
         Ok(Self(vv))
     }
 
-    pub fn get(&self, peer_id: JsIntoPeerID) -> JsResult<Option<Counter>> {
+    pub fn get(&self, peer_id: JsIntoPeerID) -> JsResult<Option<Lamport>> {
         let id = id_value_to_u64(peer_id.into())?;
         Ok(self.0.get(&id).copied())
     }

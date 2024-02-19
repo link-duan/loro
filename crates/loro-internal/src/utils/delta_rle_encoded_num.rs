@@ -1,10 +1,11 @@
+use loro_common::Lamport;
 use serde_columnar::columnar;
 
 #[columnar(vec, ser, de)]
 #[derive(Debug, Clone)]
 struct EncodedNum {
     #[columnar(strategy = "DeltaRle")]
-    num: u32,
+    num: Lamport,
 }
 
 #[derive(Default)]
@@ -19,11 +20,11 @@ impl DeltaRleEncodedNums {
         Self::default()
     }
 
-    pub fn push(&mut self, n: u32) {
+    pub fn push(&mut self, n: Lamport) {
         self.nums.push(EncodedNum { num: n });
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = u32> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = Lamport> + '_ {
         self.nums.iter().map(|n| n.num)
     }
 

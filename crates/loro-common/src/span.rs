@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use crate::{Counter, IdSpanVector, Lamport, PeerID, ID};
+use crate::{IdSpanVector, Lamport, PeerID, ID};
 use rle::{HasLength, Mergable, Slice, Sliceable};
 
 /// This struct supports reverse repr: `from` can be less than `to`.
@@ -11,9 +11,9 @@ use rle::{HasLength, Mergable, Slice, Sliceable};
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct CounterSpan {
     // TODO: should be private. user should not be able to change start from smaller than end to be greater than end
-    pub start: Counter,
+    pub start: Lamport,
     // TODO: should be private
-    pub end: Counter,
+    pub end: Lamport,
 }
 
 pub trait HasLamport {
@@ -40,7 +40,7 @@ impl Debug for CounterSpan {
 
 impl CounterSpan {
     #[inline]
-    pub fn new(from: Counter, to: Counter) -> Self {
+    pub fn new(from: Lamport, to: Lamport) -> Self {
         CounterSpan {
             start: from,
             end: to,
@@ -87,7 +87,7 @@ impl CounterSpan {
     }
 
     #[inline]
-    pub fn min(&self) -> Counter {
+    pub fn min(&self) -> Lamport {
         if self.start < self.end {
             self.start
         } else {
@@ -95,7 +95,7 @@ impl CounterSpan {
         }
     }
 
-    pub fn set_min(&mut self, min: Counter) {
+    pub fn set_min(&mut self, min: Lamport) {
         if self.start < self.end {
             self.start = min;
         } else {
@@ -104,7 +104,7 @@ impl CounterSpan {
     }
 
     #[inline(always)]
-    pub fn max(&self) -> Counter {
+    pub fn max(&self) -> Lamport {
         if self.start > self.end {
             self.start
         } else {
@@ -125,7 +125,7 @@ impl CounterSpan {
     }
 
     #[inline]
-    pub fn contains(&self, v: Counter) -> bool {
+    pub fn contains(&self, v: Lamport) -> bool {
         if self.start < self.end {
             self.start <= v && v < self.end
         } else {
@@ -133,7 +133,7 @@ impl CounterSpan {
         }
     }
 
-    pub fn set_start(&mut self, new_start: Counter) {
+    pub fn set_start(&mut self, new_start: Lamport) {
         if self.start < self.end {
             self.start = new_start.min(self.end);
         } else {
@@ -141,7 +141,7 @@ impl CounterSpan {
         }
     }
 
-    pub fn set_end(&mut self, new_end: Counter) {
+    pub fn set_end(&mut self, new_end: Lamport) {
         if self.start < self.end {
             self.end = new_end.max(self.start);
         } else {
@@ -192,13 +192,13 @@ impl Sliceable for CounterSpan {
         assert!(len <= self.content_len());
         if self.start < self.end {
             CounterSpan {
-                start: self.start + from as Counter,
-                end: self.start + to as Counter,
+                start: self.start + from as Lamport,
+                end: self.start + to as Lamport,
             }
         } else {
             CounterSpan {
-                start: self.start - from as Counter,
-                end: self.start - to as Counter,
+                start: self.start - from as Lamport,
+                end: self.start - to as Lamport,
             }
         }
     }
@@ -247,7 +247,7 @@ pub struct IdSpan {
 
 impl IdSpan {
     #[inline]
-    pub fn new(peer: PeerID, from: Counter, to: Counter) -> Self {
+    pub fn new(peer: PeerID, from: Lamport, to: Lamport) -> Self {
         Self {
             client_id: peer,
             counter: CounterSpan {
@@ -259,7 +259,7 @@ impl IdSpan {
 
     #[inline]
     pub fn contains(&self, id: ID) -> bool {
-        self.client_id == id.peer && self.counter.contains(id.counter)
+        self.client_id == id.peer && self.counter.contains(id.lamport)
     }
 
     #[inline(always)]
@@ -340,18 +340,18 @@ pub trait HasId {
 }
 
 pub trait HasCounter {
-    fn ctr_start(&self) -> Counter;
+    fn ctr_start(&self) -> Lamport;
 }
 
 pub trait HasCounterSpan: HasCounter + HasLength {
     /// end is the exclusive end, last the inclusive end.
-    fn ctr_end(&self) -> Counter {
-        self.ctr_start() + self.atom_len() as Counter
+    fn ctr_end(&self) -> Lamport {
+        self.ctr_start() + self.atom_len() as Lamport
     }
 
     /// end is the exclusive end, last the inclusive end.
-    fn ctr_last(&self) -> Counter {
-        self.ctr_start() + self.atom_len() as Counter - 1
+    fn ctr_last(&self) -> Lamport {
+        self.ctr_start() + self.atom_len() as Lamport - 1
     }
 
     fn ctr_span(&self) -> CounterSpan {
@@ -366,8 +366,8 @@ impl<T: HasCounter + HasLength> HasCounterSpan for T {}
 
 impl<T: HasId> HasCounter for T {
     #[inline]
-    fn ctr_start(&self) -> Counter {
-        self.id_start().counter
+    fn ctr_start(&self) -> Lamport {
+        self.id_start().lamport
     }
 }
 
@@ -378,10 +378,10 @@ pub trait HasIdSpan: HasId + HasLength {
         if self_start.peer != other_start.peer {
             false
         } else {
-            let self_start = self_start.counter;
-            let other_start = other_start.counter;
-            let self_end = self.id_end().counter;
-            let other_end = other.id_end().counter;
+            let self_start = self_start.lamport;
+            let other_start = other_start.lamport;
+            let self_end = self.id_end().lamport;
+            let other_end = other.id_end().lamport;
             self_start < other_end && other_start < self_end
         }
     }
@@ -390,8 +390,8 @@ pub trait HasIdSpan: HasId + HasLength {
         let id = self.id_start();
         IdSpan::new(
             id.peer,
-            id.counter,
-            id.counter + self.content_len() as Counter,
+            id.lamport,
+            id.lamport + self.content_len() as Lamport,
         )
     }
 
@@ -411,8 +411,8 @@ pub trait HasIdSpan: HasId + HasLength {
             return false;
         }
 
-        id_start.counter <= id.counter
-            && id.counter < id_start.counter + self.content_len() as Counter
+        id_start.lamport <= id.lamport
+            && id.lamport < id_start.lamport + self.content_len() as Lamport
     }
 }
 impl<T: HasId + HasLength> HasIdSpan for T {}
@@ -436,7 +436,7 @@ impl HasId for (&PeerID, &CounterSpan) {
     fn id_start(&self) -> ID {
         ID {
             peer: *self.0,
-            counter: self.1.min(),
+            lamport: self.1.min(),
         }
     }
 }
@@ -445,14 +445,14 @@ impl HasId for (PeerID, CounterSpan) {
     fn id_start(&self) -> ID {
         ID {
             peer: self.0,
-            counter: self.1.min(),
+            lamport: self.1.min(),
         }
     }
 }
 
 impl From<ID> for IdSpan {
     fn from(value: ID) -> Self {
-        Self::new(value.peer, value.counter, value.counter + 1)
+        Self::new(value.peer, value.lamport, value.lamport + 1)
     }
 }
 

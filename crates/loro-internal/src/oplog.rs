@@ -13,13 +13,13 @@ use rle::{HasLength, RleCollection, RlePush, RleVec, Sliceable};
 use smallvec::SmallVec;
 // use tabled::measurment::Percent;
 
-use crate::change::{Change, Lamport, Timestamp};
+use crate::change::{Change, Timestamp};
 use crate::container::list::list_op;
 use crate::dag::{Dag, DagUtils};
 use crate::encoding::ParsedHeaderAndBody;
 use crate::encoding::{decode_oplog, encode_oplog, EncodeMode};
 use crate::group::OpGroups;
-use crate::id::{Counter, PeerID, ID};
+use crate::id::{Lamport, PeerID, ID};
 use crate::op::{ListSlice, RawOpContent, RemoteOp};
 use crate::span::{HasCounterSpan, HasIdSpan, HasLamportSpan};
 use crate::version::{Frontiers, ImVersionVector, VersionVector};
@@ -67,7 +67,7 @@ pub struct AppDag {
 #[derive(Debug, Clone)]
 pub struct AppDagNode {
     pub(crate) peer: PeerID,
-    pub(crate) cnt: Counter,
+    pub(crate) cnt: Lamport,
     pub(crate) lamport: Lamport,
     pub(crate) deps: Frontiers,
     pub(crate) vv: ImVersionVector,
@@ -96,7 +96,7 @@ impl AppDag {
     pub fn get_mut(&mut self, id: ID) -> Option<&mut AppDagNode> {
         let ID {
             peer: client_id,
-            counter,
+            lamport: counter,
         } = id;
         self.map.get_mut(&client_id).and_then(|rle| {
             if counter >= rle.sum_atom_len() {
@@ -228,7 +228,7 @@ impl OpLog {
         match entry.last_mut() {
             Some(last) => {
                 assert_eq!(
-                    change.id.counter,
+                    change.id.lamport,
                     last.ctr_end(),
                     "change id is not continuous"
                 );
@@ -243,7 +243,7 @@ impl OpLog {
                 }
             }
             None => {
-                assert!(change.id.counter == 0, "change id is not continuous");
+                assert!(change.id.lamport == 0, "change id is not continuous");
                 entry.push(change);
             }
         }
@@ -302,8 +302,8 @@ impl OpLog {
             let last = nodes.last_mut().unwrap();
             assert_eq!(last.peer, change.id.peer, "peer id is not the same");
             assert_eq!(
-                last.cnt + last.len as Counter,
-                change.id.counter,
+                last.cnt + last.len as Lamport,
+                change.id.lamport,
                 "counter is not continuous"
             );
             assert_eq!(
@@ -311,22 +311,22 @@ impl OpLog {
                 change.lamport,
                 "lamport is not continuous"
             );
-            last.len = (change.id.counter - last.cnt) as usize + len;
+            last.len = (change.id.lamport - last.cnt) as usize + len;
             last.has_succ = false;
         } else {
             let vv = self.dag.frontiers_to_im_vv(&change.deps);
             let dag_row = &mut self.dag.map.entry(change.id.peer).or_default();
-            if change.id.counter > 0 {
+            if change.id.lamport > 0 {
                 assert_eq!(
                     dag_row.last().unwrap().ctr_end(),
-                    change.id.counter,
+                    change.id.lamport,
                     "counter is not continuous"
                 );
             }
             dag_row.push_rle_element(AppDagNode {
                 vv,
                 peer: change.id.peer,
-                cnt: change.id.counter,
+                cnt: change.id.lamport,
                 lamport: change.lamport,
                 deps: change.deps.clone(),
                 has_succ: false,
@@ -336,7 +336,7 @@ impl OpLog {
             for dep in change.deps.iter() {
                 self.ensure_dep_on_change_end(change.id.peer, *dep);
                 let target = self.dag.get_mut(*dep).unwrap();
-                if target.ctr_last() == dep.counter {
+                if target.ctr_last() == dep.lamport {
                     target.has_succ = true;
                 }
             }
@@ -347,7 +347,7 @@ impl OpLog {
 
     fn ensure_dep_on_change_end(&mut self, src: PeerID, dep: ID) {
         let changes = self.changes.get_mut(&dep.peer).unwrap();
-        match changes.binary_search_by(|c| c.ctr_last().cmp(&dep.counter)) {
+        match changes.binary_search_by(|c| c.ctr_last().cmp(&dep.lamport)) {
             Ok(index) => {
                 if src != dep.peer {
                     changes[index].has_dependents = true;
@@ -360,7 +360,7 @@ impl OpLog {
                 // And once it's imported, because it's old, it has small lamport timestamp, so it
                 // won't be slow again in the future imports.
                 let change = &mut changes[index];
-                let offset = (dep.counter - change.id.counter + 1) as usize;
+                let offset = (dep.lamport - change.id.lamport + 1) as usize;
                 let left = change.slice(0, offset);
                 let right = change.slice(offset, change.atom_len());
                 assert_ne!(left.atom_len(), 0);
@@ -382,7 +382,7 @@ impl OpLog {
         }
 
         let end = changes.last().unwrap().ctr_end();
-        if change.id.counter >= end {
+        if change.id.lamport >= end {
             return Some(change);
         }
 
@@ -390,13 +390,13 @@ impl OpLog {
             return None;
         }
 
-        let offset = (end - change.id.counter) as usize;
+        let offset = (end - change.id.lamport) as usize;
         Some(change.slice(offset, change.atom_len()))
     }
 
     fn check_id_is_not_duplicated(&self, id: ID) -> Result<(), LoroError> {
         let cur_end = self.dag.vv.get(&id.peer).cloned().unwrap_or(0);
-        if cur_end > id.counter {
+        if cur_end > id.lamport {
             return Err(LoroError::UsedOpID { id });
         }
 
@@ -456,15 +456,16 @@ impl OpLog {
     pub(crate) fn get_max_lamport_at(&self, id: ID) -> Lamport {
         self.get_change_at(id)
             .map(|c| {
-                let change_counter = c.id.counter as u32;
-                c.lamport + c.ops().last().map(|op| op.counter).unwrap_or(0) as u32 - change_counter
+                let change_counter = c.id.lamport as Lamport;
+                c.lamport + c.ops().last().map(|op| op.counter).unwrap_or(0) as Lamport
+                    - change_counter
             })
             .unwrap_or(Lamport::MAX)
     }
 
     pub fn get_change_at(&self, id: ID) -> Option<&Change> {
         if let Some(peer_changes) = self.changes.get(&id.peer) {
-            if let Some(result) = peer_changes.get_by_atom_index(id.counter) {
+            if let Some(result) = peer_changes.get_by_atom_index(id.lamport) {
                 return Some(&peer_changes[result.merged_index]);
             }
         }
@@ -604,8 +605,8 @@ impl OpLog {
             // Because get_by_atom_index would return Some if counter is at the end,
             // we cannot use it directly.
             // TODO: maybe we should refactor this
-            if id.counter <= changes.last().unwrap().id_last().counter {
-                Some(changes.get_by_atom_index(id.counter).unwrap().element)
+            if id.lamport <= changes.last().unwrap().id_last().lamport {
+                Some(changes.get_by_atom_index(id.lamport).unwrap().element)
             } else {
                 None
             }
@@ -615,7 +616,7 @@ impl OpLog {
     #[allow(unused)]
     pub(crate) fn lookup_op(&self, id: ID) -> Option<&crate::op::Op> {
         self.lookup_change(id)
-            .and_then(|change| change.ops.get_by_atom_index(id.counter).map(|x| x.element))
+            .and_then(|change| change.ops.get_by_atom_index(id.lamport).map(|x| x.element))
     }
 
     #[inline(always)]
@@ -651,7 +652,7 @@ impl OpLog {
             };
 
             for change in &changes[result.merged_index..changes.len()] {
-                if change.id.counter >= to_cnt {
+                if change.id.lamport >= to_cnt {
                     break;
                 }
 
@@ -678,7 +679,7 @@ impl OpLog {
         to_frontiers: Option<&Frontiers>,
     ) -> (
         VersionVector,
-        impl Iterator<Item = (&Change, Counter, Rc<RefCell<VersionVector>>)>,
+        impl Iterator<Item = (&Change, Lamport, Rc<RefCell<VersionVector>>)>,
     ) {
         let mut merged_vv = from.clone();
         merged_vv.merge(to);
@@ -722,7 +723,7 @@ impl OpLog {
                         .cnt
                         .max(cur_cnt)
                         .max(common_ancestors_vv.get(&peer).copied().unwrap_or(0));
-                    let end = (inner.data.cnt + inner.data.len as Counter)
+                    let end = (inner.data.cnt + inner.data.len as Lamport)
                         .min(merged_vv.get(&peer).copied().unwrap_or(0));
                     let change = self
                         .changes

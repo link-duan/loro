@@ -388,13 +388,13 @@ impl RichtextStateChunk {
         match self {
             RichtextStateChunk::Text(t) => {
                 let id = t.id();
-                IdSpan::new(id.peer, id.counter, id.counter + t.unicode_len())
+                IdSpan::new(id.peer, id.lamport, id.lamport + t.unicode_len())
             }
             RichtextStateChunk::Style { style, anchor_type } => match anchor_type {
                 AnchorType::Start => style.id().into(),
                 AnchorType::End => {
                     let id = style.id();
-                    IdSpan::new(id.peer, id.counter + 1, id.counter + 2)
+                    IdSpan::new(id.peer, id.lamport + 1, id.lamport + 2)
                 }
             },
         }

@@ -7,17 +7,15 @@ use std::{
 
 use append_only_bytes::BytesSlice;
 use fxhash::FxHashMap;
-use loro_common::PeerID;
+use loro_common::{Lamport, PeerID};
 
 use crate::{
-    change::Lamport,
     container::{
         idx::ContainerIdx,
         list::list_op::{InnerListOp, ListOp},
         map::MapSet,
         ContainerID,
     },
-    id::Counter,
     op::{InnerContent, ListSlice, Op, RawOp, RawOpContent, SliceRange},
     LoroValue,
 };
@@ -231,7 +229,7 @@ impl SharedArena {
         &self,
         container: &ContainerID,
         peer: PeerID,
-        counter: Counter,
+        counter: Lamport,
         lamport: Lamport,
         content: RawOpContent,
     ) -> Op {
@@ -325,7 +323,7 @@ impl SharedArena {
         self.inner_convert_op(
             op.content.clone(),
             op.id.peer,
-            op.id.counter,
+            op.id.lamport,
             op.lamport,
             op.container,
         )

@@ -1,5 +1,5 @@
 use generic_btree::{rle::Sliceable, LeafIndex};
-use loro_common::{Counter, HasId, HasIdSpan, IdSpan, PeerID, ID};
+use loro_common::{HasId, HasIdSpan, IdSpan, Lamport, PeerID, ID};
 use rle::HasLength;
 
 use crate::VersionVector;
@@ -73,9 +73,9 @@ impl Tracker {
         // debug_log::group!("TrackerInsert");
         // debug_log::debug_dbg!(&op_id, pos, content);
         // debug_log::debug_dbg!(&self);
-        let last_id = op_id.inc(content.len() as Counter - 1);
+        let last_id = op_id.inc(content.len() as Lamport - 1);
         let applied_counter_end = self.applied_vv.get(&last_id.peer).copied().unwrap_or(0);
-        if applied_counter_end > op_id.counter {
+        if applied_counter_end > op_id.lamport {
             if !self.current_vv.includes_id(last_id) {
                 // PERF: may be slow
                 let mut updates = Default::default();
@@ -84,14 +84,14 @@ impl Tracker {
                     IdSpan::new(
                         op_id.peer,
                         cnt_start,
-                        op_id.counter + content.len() as Counter,
+                        op_id.lamport + content.len() as Lamport,
                     ),
                     &mut updates,
                 );
                 self.batch_update(updates, false);
             }
 
-            if applied_counter_end > last_id.counter {
+            if applied_counter_end > last_id.lamport {
                 // the op is included in the applied vv
                 self.current_vv.extend_to_include_last_id(last_id);
                 // debug_log::debug_log!("Ops are already included {:#?}", &self);
@@ -99,8 +99,8 @@ impl Tracker {
             }
 
             // the op is partially included, need to slice the content
-            let start = (applied_counter_end - op_id.counter) as usize;
-            op_id.counter = applied_counter_end;
+            let start = (applied_counter_end - op_id.lamport) as usize;
+            op_id.lamport = applied_counter_end;
             pos += start;
             content = content.slice(start..);
         }
@@ -128,7 +128,7 @@ impl Tracker {
 
         self.update_insert_by_split(&result.splitted.arr);
 
-        let end_id = op_id.inc(content.len() as Counter);
+        let end_id = op_id.inc(content.len() as Lamport);
         self.current_vv.extend_to_include_end_id(end_id);
         self.applied_vv.extend_to_include_end_id(end_id);
         // debug_log::debug_dbg!(&self);
@@ -152,29 +152,29 @@ impl Tracker {
         // debug_log::group!("Tracker Delete");
         // debug_log::debug_dbg!(&op_id, pos, len, reverse);
         // debug_log::debug_dbg!(&self);
-        let last_id = op_id.inc(len as Counter - 1);
+        let last_id = op_id.inc(len as Lamport - 1);
         let applied_counter_end = self.applied_vv.get(&last_id.peer).copied().unwrap_or(0);
-        if applied_counter_end > op_id.counter {
+        if applied_counter_end > op_id.lamport {
             if !self.current_vv.includes_id(last_id) {
                 // PERF: may be slow
                 let mut updates = Default::default();
                 let cnt_start = self.current_vv.get(&op_id.peer).copied().unwrap_or(0);
                 self.forward(
-                    IdSpan::new(op_id.peer, cnt_start, op_id.counter + len as Counter),
+                    IdSpan::new(op_id.peer, cnt_start, op_id.lamport + len as Lamport),
                     &mut updates,
                 );
                 self.batch_update(updates, false);
             }
 
-            if applied_counter_end > last_id.counter {
+            if applied_counter_end > last_id.lamport {
                 self.current_vv.extend_to_include_last_id(last_id);
                 debug_log::debug_dbg!(&self);
                 return;
             }
 
             // the op is partially included, need to slice the op
-            let start = (applied_counter_end - op_id.counter) as usize;
-            op_id.counter = applied_counter_end;
+            let start = (applied_counter_end - op_id.lamport) as usize;
+            op_id.lamport = applied_counter_end;
             len -= start;
             // If reverse, don't need to change the pos, because it's deleting backwards.
             // If not reverse, we don't need to change the pos either, because the `start` chars after it are already deleted
@@ -201,13 +201,13 @@ impl Tracker {
             let len = id_span.atom_len();
             self.id_to_cursor
                 .push(cur_id, id_to_cursor::Cursor::Delete(id_span));
-            cur_id = cur_id.inc(len as Counter);
+            cur_id = cur_id.inc(len as Lamport);
         }
 
-        debug_assert_eq!(cur_id.counter - op_id.counter, len as Counter);
+        debug_assert_eq!(cur_id.lamport - op_id.lamport, len as Lamport);
         self.update_insert_by_split(&split.arr);
 
-        let end_id = op_id.inc(len as Counter);
+        let end_id = op_id.inc(len as Lamport);
         self.current_vv.extend_to_include_end_id(end_id);
         self.applied_vv.extend_to_include_end_id(end_id);
         // debug_log::debug_dbg!(&self);

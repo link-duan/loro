@@ -8,9 +8,8 @@ use serde::{ser::SerializeStruct, Serialize};
 
 use crate::{
     arena::SharedArena,
-    change::Lamport,
     handler::ValueOrContainer,
-    id::{Counter, PeerID, ID},
+    id::{Lamport, PeerID, ID},
     span::{HasId, HasLamport},
     txn::Transaction,
     DocState, InternalString, LoroValue,
@@ -23,7 +22,7 @@ pub struct MapDelta {
 
 #[derive(Debug, Clone)]
 pub struct MapValue {
-    pub counter: Counter,
+    pub counter: Lamport,
     pub value: Option<LoroValue>,
     pub lamp: Lamport,
     pub peer: PeerID,
@@ -64,7 +63,7 @@ pub struct ResolvedMapDelta {
 
 #[derive(Debug, Clone)]
 pub struct ResolvedMapValue {
-    pub counter: Counter,
+    pub counter: Lamport,
     pub value: Option<ValueOrContainer>,
     pub lamport: (Lamport, PeerID),
 }

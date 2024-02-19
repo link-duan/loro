@@ -94,8 +94,8 @@ impl TreeDiffCalculator {
             tree_cache.tree.get_mut(&op.target).unwrap().remove(&op);
             tree_cache.current_vv.shrink_to_exclude(IdSpan::new(
                 op.id.peer,
-                op.id.counter,
-                op.id.counter + 1,
+                op.id.lamport,
+                op.id.lamport + 1,
             ));
         }
         // forward and apply
@@ -180,8 +180,8 @@ impl TreeDiffCalculator {
             tree_cache.tree.get_mut(&op.target).unwrap().remove(&op);
             tree_cache.current_vv.shrink_to_exclude(IdSpan::new(
                 op.id.peer,
-                op.id.counter,
-                op.id.counter + 1,
+                op.id.lamport,
+                op.id.lamport + 1,
             ));
             let (old_parent, last_effective_move_op_id) = tree_cache.get_parent_with_id(op.target);
             if op.effected {

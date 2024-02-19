@@ -8,7 +8,6 @@ use fxhash::{FxHashMap, FxHashSet};
 use loro_common::{ContainerID, HasCounterSpan, HasIdSpan, LoroValue, PeerID, ID};
 
 use crate::{
-    change::Lamport,
     container::{
         idx::ContainerIdx,
         richtext::{
@@ -18,7 +17,7 @@ use crate::{
     },
     delta::{Delta, MapDelta, MapValue},
     event::InternalDiff,
-    id::Counter,
+    id::Lamport,
     op::{RichOp, SliceRange, SliceRanges},
     span::{HasId, HasLamport},
     version::Frontiers,
@@ -110,7 +109,7 @@ impl DiffCalculator {
 
             let mut started_set = FxHashSet::default();
             for (change, start_counter, vv) in iter {
-                if change.id.counter > 0 && self.has_all {
+                if change.id.lamport > 0 && self.has_all {
                     assert!(
                         self.last_vv.includes_id(change.id.inc(-1)),
                         "{:?} {}",
@@ -439,7 +438,7 @@ impl DiffCalculatorTrait for MapDiffCalculator {
 struct CompactMapValue {
     lamport: Lamport,
     peer: PeerID,
-    counter: Counter,
+    counter: Lamport,
     value: Option<LoroValue>,
 }
 
@@ -628,7 +627,7 @@ impl DiffCalculatorTrait for RichtextDiffCalculator {
                     self.styles.push(StyleOp {
                         lamport: op.lamport(),
                         peer: op.peer,
-                        cnt: op.id_start().counter,
+                        cnt: op.id_start().lamport,
                         key: key.clone(),
                         value: value.clone(),
                         info: *info,

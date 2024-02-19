@@ -88,7 +88,7 @@ impl ContainerState for MapState {
                         MapValue {
                             lamp: op.lamport,
                             peer: op.id.peer,
-                            counter: op.id.counter,
+                            counter: op.id.lamport,
                             value: None,
                         },
                     );
@@ -100,7 +100,7 @@ impl ContainerState for MapState {
                     MapValue {
                         lamp: op.lamport,
                         peer: op.id.peer,
-                        counter: op.id.counter,
+                        counter: op.id.lamport,
                         value: Some(value.clone().unwrap()),
                     },
                 );

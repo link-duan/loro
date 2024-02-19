@@ -6,10 +6,10 @@ use std::{
 use enum_as_inner::EnumAsInner;
 use enum_dispatch::enum_dispatch;
 use fxhash::FxHashMap;
-use loro_common::{Counter, HasId, InternalString, LoroValue, PeerID, ID};
+use loro_common::{HasId, InternalString, Lamport, LoroValue, PeerID, ID};
 
 use crate::{
-    change::{Change, Lamport},
+    change::Change,
     container::{idx::ContainerIdx, tree::tree_op::TreeOp},
     diff_calc::tree::TreeCacheForDiff,
     op::{InnerContent, RichOp},
@@ -80,7 +80,7 @@ trait OpGroupTrait {
 #[derive(Debug, Clone)]
 pub(crate) struct GroupedMapOpInfo {
     pub(crate) value: Option<LoroValue>,
-    pub(crate) counter: Counter,
+    pub(crate) counter: Lamport,
     pub(crate) lamport: Lamport,
     pub(crate) peer: PeerID,
 }
@@ -145,7 +145,7 @@ impl OpGroupTrait for MapOpGroup {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct GroupedTreeOpInfo {
     pub(crate) peer: PeerID,
-    pub(crate) counter: Counter,
+    pub(crate) counter: Lamport,
     pub(crate) value: TreeOp,
 }
 

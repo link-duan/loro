@@ -1,9 +1,8 @@
 use std::cmp::Ordering;
 use std::fmt::Display;
 
-use crate::change::Lamport;
 use crate::dag::{Dag, DagNode};
-use crate::id::{Counter, ID};
+use crate::id::{Lamport, ID};
 use crate::span::{HasId, HasLamport};
 use crate::version::{Frontiers, ImVersionVector, VersionVector};
 use loro_common::HasIdSpan;
@@ -12,13 +11,13 @@ use rle::{HasIndex, HasLength, Mergable, RleCollection, Sliceable};
 use super::{AppDag, AppDagNode};
 
 impl HasIndex for AppDagNode {
-    type Int = Counter;
+    type Int = Lamport;
     fn get_start_index(&self) -> Self::Int {
         self.cnt
     }
 
     fn get_end_index(&self) -> Self::Int {
-        self.cnt + self.len as Counter
+        self.cnt + self.len as Lamport
     }
 }
 
@@ -26,7 +25,7 @@ impl Sliceable for AppDagNode {
     fn slice(&self, from: usize, to: usize) -> Self {
         AppDagNode {
             peer: self.peer,
-            cnt: self.cnt + from as Counter,
+            cnt: self.cnt + from as Lamport,
             lamport: self.lamport + from as Lamport,
             deps: Default::default(),
             vv: Default::default(),
@@ -40,7 +39,7 @@ impl HasId for AppDagNode {
     fn id_start(&self) -> ID {
         ID {
             peer: self.peer,
-            counter: self.cnt,
+            lamport: self.cnt,
         }
     }
 }
@@ -93,7 +92,7 @@ impl Dag for AppDag {
     fn get(&self, id: ID) -> Option<&Self::Node> {
         let ID {
             peer: client_id,
-            counter,
+            lamport: counter,
         } = id;
         self.map.get(&client_id).and_then(|rle| {
             rle.get_by_atom_index(counter).and_then(|x| {
@@ -117,9 +116,9 @@ impl AppDag {
     /// It's the version when the op is applied
     pub fn get_vv(&self, id: ID) -> Option<ImVersionVector> {
         self.map.get(&id.peer).and_then(|rle| {
-            rle.get_by_atom_index(id.counter).map(|x| {
+            rle.get_by_atom_index(id.lamport).map(|x| {
                 let mut vv = x.element.vv.clone();
-                vv.insert(id.peer, id.counter + 1);
+                vv.insert(id.peer, id.lamport + 1);
                 vv
             })
         })
@@ -129,7 +128,7 @@ impl AppDag {
     /// If None, two versions are concurrent to each other
     pub fn cmp_version(&self, a: ID, b: ID) -> Option<Ordering> {
         if a.peer == b.peer {
-            return Some(a.counter.cmp(&b.counter));
+            return Some(a.lamport.cmp(&b.lamport));
         }
 
         let a = self.get_vv(a).unwrap();
@@ -139,10 +138,10 @@ impl AppDag {
 
     pub fn get_lamport(&self, id: &ID) -> Option<Lamport> {
         self.map.get(&id.peer).and_then(|rle| {
-            rle.get_by_atom_index(id.counter).and_then(|node| {
-                assert!(id.counter >= node.element.cnt);
-                if node.element.cnt + node.element.len as Counter > id.counter {
-                    Some(node.element.lamport + (id.counter - node.element.cnt) as Lamport)
+            rle.get_by_atom_index(id.lamport).and_then(|node| {
+                assert!(id.lamport >= node.element.cnt);
+                if node.element.cnt + node.element.len as Lamport > id.lamport {
+                    Some(node.element.lamport + (id.lamport - node.element.cnt) as Lamport)
                 } else {
                     None
                 }
@@ -169,7 +168,7 @@ impl AppDag {
             let Some(rle) = self.map.get(&id.peer) else {
                 return None;
             };
-            let Some(x) = rle.get_by_atom_index(id.counter) else {
+            let Some(x) = rle.get_by_atom_index(id.lamport) else {
                 return None;
             };
             vv.extend_to_include_vv(x.element.vv.iter());
@@ -189,7 +188,7 @@ impl AppDag {
             let Some(rle) = self.map.get(&id.peer) else {
                 unreachable!()
             };
-            let Some(x) = rle.get_by_atom_index(id.counter) else {
+            let Some(x) = rle.get_by_atom_index(id.lamport) else {
                 unreachable!()
             };
             let mut vv = x.element.vv.clone();
@@ -201,7 +200,7 @@ impl AppDag {
             let Some(rle) = self.map.get(&id.peer) else {
                 unreachable!()
             };
-            let Some(x) = rle.get_by_atom_index(id.counter) else {
+            let Some(x) = rle.get_by_atom_index(id.lamport) else {
                 unreachable!()
             };
             vv.extend_to_include_vv(x.element.vv.iter());
@@ -226,20 +225,20 @@ impl AppDag {
             let Some(rle) = self.map.get(&id.peer) else {
                 unreachable!()
             };
-            let Some(x) = rle.get_by_atom_index(id.counter) else {
+            let Some(x) = rle.get_by_atom_index(id.lamport) else {
                 unreachable!("{} not found", id)
             };
-            (id.counter - x.element.cnt) as Lamport + x.element.lamport + 1
+            (id.lamport - x.element.cnt) as Lamport + x.element.lamport + 1
         };
 
         for id in frontiers[1..].iter() {
             let Some(rle) = self.map.get(&id.peer) else {
                 unreachable!()
             };
-            let Some(x) = rle.get_by_atom_index(id.counter) else {
+            let Some(x) = rle.get_by_atom_index(id.lamport) else {
                 unreachable!()
             };
-            lamport = lamport.max((id.counter - x.element.cnt) as Lamport + x.element.lamport + 1);
+            lamport = lamport.max((id.lamport - x.element.cnt) as Lamport + x.element.lamport + 1);
         }
 
         lamport

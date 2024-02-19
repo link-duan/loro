@@ -1,7 +1,7 @@
 use crate::{
-    change::{Change, Lamport, Timestamp},
+    change::{Change, Timestamp},
     container::{idx::ContainerIdx, ContainerID},
-    id::{Counter, PeerID, ID},
+    id::{Lamport, PeerID, ID},
     span::{HasCounter, HasId, HasLamport},
 };
 use crate::{delta::DeltaValue, LoroValue};
@@ -20,7 +20,7 @@ pub use content::*;
 /// A Op may have multiple atomic operations, since Op can be merged.
 #[derive(Debug, Clone)]
 pub struct Op {
-    pub(crate) counter: Counter,
+    pub(crate) counter: Lamport,
     pub(crate) container: ContainerIdx,
     pub(crate) content: InnerContent,
 }
@@ -35,7 +35,7 @@ impl OpWithId {
     pub fn id(&self) -> ID {
         ID {
             peer: self.peer,
-            counter: self.op.counter,
+            lamport: self.op.counter,
         }
     }
 
@@ -44,14 +44,14 @@ impl OpWithId {
         IdSpan::new(
             self.peer,
             self.op.counter,
-            self.op.counter + self.op.atom_len() as Counter,
+            self.op.counter + self.op.atom_len() as Lamport,
         )
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteOp<'a> {
-    pub(crate) counter: Counter,
+    pub(crate) counter: Lamport,
     pub(crate) container: ContainerID,
     pub(crate) content: RawOpContent<'a>,
 }
@@ -91,7 +91,7 @@ impl Op {
     #[allow(unused)]
     pub(crate) fn new(id: ID, content: InnerContent, container: ContainerIdx) -> Self {
         Op {
-            counter: id.counter,
+            counter: id.lamport,
             content,
             container,
         }
@@ -111,7 +111,7 @@ impl<'a> RemoteOp<'a> {
 
 impl Mergable for Op {
     fn is_mergable(&self, other: &Self, cfg: &()) -> bool {
-        self.counter + self.content_len() as Counter == other.counter
+        self.counter + self.content_len() as Lamport == other.counter
             && self.container == other.container
             && self.content.is_mergable(&other.content, cfg)
     }
@@ -132,7 +132,7 @@ impl Sliceable for Op {
         assert!(to > from, "{to} should be greater than {from}");
         let content: InnerContent = self.content.slice(from, to);
         Op {
-            counter: (self.counter + from as Counter),
+            counter: (self.counter + from as Lamport),
             content,
             container: self.container,
         }
@@ -160,7 +160,7 @@ impl<'a> Sliceable for RemoteOp<'a> {
     fn slice(&self, from: usize, to: usize) -> Self {
         assert!(to > from);
         RemoteOp {
-            counter: (self.counter + from as Counter),
+            counter: (self.counter + from as Lamport),
             content: self.content.slice(from, to),
             container: self.container.clone(),
         }
@@ -168,7 +168,7 @@ impl<'a> Sliceable for RemoteOp<'a> {
 }
 
 impl HasIndex for Op {
-    type Int = Counter;
+    type Int = Lamport;
 
     fn get_start_index(&self) -> Self::Int {
         self.counter
@@ -176,7 +176,7 @@ impl HasIndex for Op {
 }
 
 impl<'a> HasIndex for RemoteOp<'a> {
-    type Int = Counter;
+    type Int = Lamport;
 
     fn get_start_index(&self) -> Self::Int {
         self.counter
@@ -184,13 +184,13 @@ impl<'a> HasIndex for RemoteOp<'a> {
 }
 
 impl HasCounter for Op {
-    fn ctr_start(&self) -> Counter {
+    fn ctr_start(&self) -> Lamport {
         self.counter
     }
 }
 
 impl<'a> HasCounter for RemoteOp<'a> {
-    fn ctr_start(&self) -> Counter {
+    fn ctr_start(&self) -> Lamport {
         self.counter
     }
 }
@@ -199,7 +199,7 @@ impl<'a> HasId for RichOp<'a> {
     fn id_start(&self) -> ID {
         ID {
             peer: self.peer,
-            counter: self.op.counter + self.start as Counter,
+            lamport: self.op.counter + self.start as Lamport,
         }
     }
 }
@@ -229,7 +229,7 @@ impl<'a> RichOp<'a> {
     }
 
     pub fn new_by_change(change: &Change<Op>, op: &'a Op) -> Self {
-        let diff = op.counter - change.id.counter;
+        let diff = op.counter - change.id.lamport;
         RichOp {
             op,
             peer: change.id.peer,
@@ -245,7 +245,7 @@ impl<'a> RichOp<'a> {
     /// op is contained in the change, but it's not necessary overlap with change[start..end]
     pub fn new_by_slice_on_change(change: &Change<Op>, start: i32, end: i32, op: &'a Op) -> Self {
         debug_assert!(end > start);
-        let op_index_in_change = op.counter - change.id.counter;
+        let op_index_in_change = op.counter - change.id.lamport;
         let op_slice_start = (start - op_index_in_change).clamp(0, op.atom_len() as i32);
         let op_slice_end = (end - op_index_in_change).clamp(0, op.atom_len() as i32);
         RichOp {
@@ -295,7 +295,7 @@ impl<'a> RichOp<'a> {
     pub(crate) fn id(&self) -> ID {
         ID {
             peer: self.peer,
-            counter: self.op.counter + self.start as Counter,
+            lamport: self.op.counter + self.start as Lamport,
         }
     }
 }
@@ -483,7 +483,7 @@ impl DeltaValue for SliceRanges {
             return Err(other);
         }
 
-        if self.id.counter + self.length() as Counter != other.id.counter {
+        if self.id.lamport + self.length() as Lamport != other.id.lamport {
             return Err(other);
         }
 

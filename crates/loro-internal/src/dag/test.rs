@@ -6,8 +6,7 @@ use std::cmp::Ordering;
 use super::*;
 use crate::{
     array_mut_ref,
-    change::Lamport,
-    id::{Counter, PeerID, ID},
+    id::{Lamport, PeerID, ID},
     span::HasIdSpan,
 };
 
@@ -39,11 +38,11 @@ impl DagNode for TestNode {
 impl Sliceable for TestNode {
     fn slice(&self, from: usize, to: usize) -> Self {
         Self {
-            id: self.id.inc(from as Counter),
+            id: self.id.inc(from as Lamport),
             lamport: self.lamport + from as Lamport,
             len: to - from,
             deps: if from > 0 {
-                vec![self.id.inc(from as Counter - 1)]
+                vec![self.id.inc(from as Lamport - 1)]
             } else {
                 self.deps.clone()
             },
@@ -90,9 +89,9 @@ impl Dag for TestDag {
     fn get(&self, id: ID) -> Option<&Self::Node> {
         let arr = self.nodes.get(&id.peer)?;
         arr.binary_search_by(|node| {
-            if node.id.counter > id.counter {
+            if node.id.lamport > id.lamport {
                 Ordering::Greater
-            } else if node.id.counter + node.len as i32 <= id.counter {
+            } else if node.id.lamport + node.len as i32 <= id.lamport {
                 Ordering::Less
             } else {
                 Ordering::Equal
@@ -133,8 +132,8 @@ impl TestDag {
         let client_id = self.client_id;
         let counter = self.version_vec.entry(client_id).or_insert(0);
         let id = ID::new(client_id, *counter);
-        *counter += len as Counter;
-        let deps = std::mem::replace(&mut self.frontier, vec![id.inc(len as Counter - 1)]);
+        *counter += len as Lamport;
+        let deps = std::mem::replace(&mut self.frontier, vec![id.inc(len as Lamport - 1)]);
         if deps.len() == 1 && deps[0].peer == client_id {
             // can merge two op
             let arr = self.nodes.get_mut(&client_id).unwrap();
@@ -148,7 +147,7 @@ impl TestDag {
                 len,
             ));
         }
-        self.next_lamport += len as u32;
+        self.next_lamport += len as Lamport;
     }
 
     fn merge(&mut self, other: &TestDag) {
@@ -182,13 +181,13 @@ impl TestDag {
 
     fn update_frontier(frontier: &mut Vec<ID>, new_node_id: ID, new_node_deps: &[ID]) {
         frontier.retain(|x| {
-            if x.peer == new_node_id.peer && x.counter <= new_node_id.counter {
+            if x.peer == new_node_id.peer && x.lamport <= new_node_id.lamport {
                 return false;
             }
 
             !new_node_deps
                 .iter()
-                .any(|y| y.peer == x.peer && y.counter >= x.counter)
+                .any(|y| y.peer == x.peer && y.lamport >= x.lamport)
         });
 
         // nodes from the same client with `counter < new_node_id.counter`
@@ -222,7 +221,7 @@ impl TestDag {
             arr.push(node.clone());
         }
         self.version_vec.set_end(node.id_end());
-        self.next_lamport = self.next_lamport.max(node.lamport + node.len as u32);
+        self.next_lamport = self.next_lamport.max(node.lamport + node.len as Lamport);
         false
     }
 }
@@ -244,7 +243,7 @@ fn test_dag() {
     let mut b = TestDag::new(1);
     a.push(1);
     assert_eq!(a.frontier().len(), 1);
-    assert_eq!(a.frontier()[0].counter, 0);
+    assert_eq!(a.frontier()[0].lamport, 0);
     b.push(1);
     a.merge(&b);
     assert_eq!(a.frontier().len(), 2);
@@ -258,7 +257,7 @@ fn test_dag() {
         a.frontier()[0],
         ID {
             peer: 0,
-            counter: 1
+            lamport: 1
         }
     );
 
@@ -1181,19 +1180,19 @@ mod dag_partial_iter {
                     assert!(diff_spans
                         .get(&data.id.peer)
                         .unwrap()
-                        .contains(sliced.id.counter));
+                        .contains(sliced.id.lamport));
                     vv.forward(&forward);
                     vv.retreat(&retreat);
                     let mut data_vv = map.get(&data.id).unwrap().clone();
                     data_vv.extend_to_include(IdSpan::new(
                         sliced.id.peer,
-                        sliced.id.counter,
-                        sliced.id.counter + 1,
+                        sliced.id.lamport,
+                        sliced.id.lamport + 1,
                     ));
                     data_vv.shrink_to_exclude(IdSpan::new(
                         sliced.id.peer,
-                        sliced.id.counter,
-                        sliced.id_end().counter,
+                        sliced.id.lamport,
+                        sliced.id_end().lamport,
                     ));
                     assert_eq!(vv, data_vv, "{} {}", data.id, sliced.id);
                 }

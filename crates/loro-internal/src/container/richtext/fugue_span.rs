@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use generic_btree::rle::{HasLength, Mergeable, Sliceable};
-use loro_common::{Counter, HasId, IdSpan, ID};
+use loro_common::{HasId, IdSpan, Lamport, ID};
 use serde::{Deserialize, Serialize};
 
 use super::AnchorType;
@@ -192,8 +192,8 @@ impl FugueSpan {
     pub fn id_span(&self) -> IdSpan {
         IdSpan::new(
             self.id.peer,
-            self.id.counter,
-            self.id.counter + self.content.len() as Counter,
+            self.id.lamport,
+            self.id.lamport + self.content.len() as Lamport,
         )
     }
 
@@ -217,13 +217,13 @@ impl FugueSpan {
 impl Sliceable for FugueSpan {
     fn _slice(&self, range: Range<usize>) -> Self {
         Self {
-            id: self.id.inc(range.start as Counter),
+            id: self.id.inc(range.start as Lamport),
             status: self.status,
             diff_status: self.diff_status,
             origin_left: if range.start == 0 {
                 self.origin_left
             } else {
-                Some(self.id.inc((range.start - 1) as Counter))
+                Some(self.id.inc((range.start - 1) as Lamport))
             },
             origin_right: self.origin_right,
             content: self.content._slice(range),
@@ -243,11 +243,11 @@ impl Mergeable for FugueSpan {
         self.id.peer == rhs.id.peer
             && self.status == rhs.status
             && self.diff_status == rhs.diff_status
-            && self.id.counter + self.content.len() as Counter == rhs.id.counter
+            && self.id.lamport + self.content.len() as Lamport == rhs.id.lamport
             && rhs.origin_left.is_some()
             && rhs.origin_left.unwrap().peer == self.id.peer
-            && rhs.origin_left.unwrap().counter
-                == self.id.counter + self.content.len() as Counter - 1
+            && rhs.origin_left.unwrap().lamport
+                == self.id.lamport + self.content.len() as Lamport - 1
             && self.origin_right == rhs.origin_right
             && self.content.can_merge(&rhs.content)
     }

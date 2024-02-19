@@ -524,9 +524,9 @@ impl BTreeTrait for RangeNumMapTrait {
 
 #[cfg(test)]
 mod test {
-    use loro_common::PeerID;
+    use loro_common::{Lamport, PeerID};
 
-    use crate::{change::Lamport, container::richtext::TextStyleInfoFlag};
+    use crate::container::richtext::TextStyleInfoFlag;
 
     use super::*;
 

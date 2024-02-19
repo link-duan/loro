@@ -5,7 +5,7 @@ use generic_btree::{
     BTree, BTreeTrait, Cursor, FindResult, LeafIndex, Query, SplittedLeaves,
 };
 use itertools::Itertools;
-use loro_common::{Counter, HasCounter, HasCounterSpan, HasIdSpan, IdSpan, ID};
+use loro_common::{HasCounter, HasCounterSpan, HasIdSpan, IdSpan, Lamport, ID};
 use smallvec::SmallVec;
 
 use crate::container::richtext::{fugue_span::DiffStatus, FugueSpan, RichtextChunk, Status};
@@ -74,7 +74,7 @@ impl CrdtRope {
                         left_node
                             .elem()
                             .id
-                            .inc(left_node.elem().rle_len() as Counter - 1),
+                            .inc(left_node.elem().rle_len() as Lamport - 1),
                     )
                 } else {
                     None
@@ -82,7 +82,7 @@ impl CrdtRope {
             } else {
                 let left_node = self.tree.get_leaf(start.leaf().into());
                 assert!(left_node.elem().rle_len() >= start.offset());
-                Some(left_node.elem().id.inc(start.offset() as Counter - 1))
+                Some(left_node.elem().id.inc(start.offset() as Lamport - 1))
             };
 
             let (origin_right, parent_right_leaf, in_between) = {
@@ -97,7 +97,7 @@ impl CrdtRope {
                     }
 
                     if !iter.elem.status.future {
-                        origin_right = Some(iter.elem.id.inc(iter.start.unwrap_or(0) as Counter));
+                        origin_right = Some(iter.elem.id.inc(iter.start.unwrap_or(0) as Lamport));
                         let parent_right = match iter.start {
                             Some(offset) if offset > 0 => {
                                 // It's guaranteed that origin_right's origin_left == this.origin_left.
@@ -154,8 +154,8 @@ impl CrdtRope {
 
                 visited.push(IdSpan::new(
                     other_elem.id.peer,
-                    other_elem.id.counter,
-                    other_elem.id.counter + other_elem.rle_len() as Counter,
+                    other_elem.id.lamport,
+                    other_elem.id.lamport + other_elem.rle_len() as Lamport,
                 ));
 
                 if content.origin_left == other_origin_left {
@@ -295,8 +295,8 @@ impl CrdtRope {
             let elem = self.tree.get_elem(leaf).unwrap();
             for u in group {
                 debug_assert_eq!(u.id_span.client_id, elem.id.peer);
-                let start = (u.id_span.ctr_start() - elem.id.counter).max(0);
-                let end = u.id_span.ctr_end() - elem.id.counter;
+                let start = (u.id_span.ctr_start() - elem.id.lamport).max(0);
+                let end = u.id_span.ctr_end() - elem.id.lamport;
                 tree_update_info.push((
                     leaf,
                     (start as usize).min(elem.rle_len())..(end as usize).min(elem.rle_len()),
@@ -619,7 +619,7 @@ impl LeafUpdate {
 mod test {
     use std::ops::Range;
 
-    use loro_common::{Counter, PeerID, ID};
+    use loro_common::{Lamport, PeerID, ID};
 
     use crate::container::richtext::RichtextChunk;
 
@@ -627,7 +627,7 @@ mod test {
 
     fn span(id: u32, range: Range<u32>) -> FugueSpan {
         FugueSpan::new(
-            ID::new(id as PeerID, 0 as Counter),
+            ID::new(id as PeerID, 0 as Lamport),
             RichtextChunk::new_text(range),
         )
     }
@@ -635,14 +635,14 @@ mod test {
     #[allow(unused)]
     fn unknown_span(id: u32, len: usize) -> FugueSpan {
         FugueSpan::new(
-            ID::new(id as PeerID, 0 as Counter),
+            ID::new(id as PeerID, 0 as Lamport),
             RichtextChunk::new_unknown(len as u32),
         )
     }
 
     fn future_span(id: u32, range: Range<u32>) -> FugueSpan {
         let mut fugue = FugueSpan::new(
-            ID::new(id as PeerID, 0 as Counter),
+            ID::new(id as PeerID, 0 as Lamport),
             RichtextChunk::new_text(range),
         );
 
@@ -652,7 +652,7 @@ mod test {
 
     fn dead_span(id: u32, range: Range<u32>) -> FugueSpan {
         let mut span = FugueSpan::new(
-            ID::new(id as PeerID, 0 as Counter),
+            ID::new(id as PeerID, 0 as Lamport),
             RichtextChunk::new_text(range),
         );
 
@@ -690,11 +690,11 @@ mod test {
         assert_eq!(arr[1].rle_len(), 10);
         assert_eq!(arr[2].rle_len(), 5);
 
-        assert_eq!(arr[0].id.counter, 0);
+        assert_eq!(arr[0].id.lamport, 0);
         assert_eq!(arr[0].id.peer, 0);
-        assert_eq!(arr[1].id.counter, 0);
+        assert_eq!(arr[1].id.lamport, 0);
         assert_eq!(arr[1].id.peer, 1);
-        assert_eq!(arr[2].id.counter, 5);
+        assert_eq!(arr[2].id.lamport, 5);
         assert_eq!(arr[2].id.peer, 0);
     }
 

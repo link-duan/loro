@@ -3,7 +3,7 @@ use generic_btree::{
     rle::{HasLength, Mergeable},
     LeafIndex,
 };
-use loro_common::{Counter, IdSpan, PeerID, ID};
+use loro_common::{IdSpan, Lamport, PeerID, ID};
 use rle::{HasLength as RHasLength, Mergable as RMergeable, Sliceable};
 use smallvec::smallvec;
 use smallvec::SmallVec;
@@ -24,9 +24,9 @@ impl IdToCursor {
     pub fn push(&mut self, id: ID, cursor: Cursor) {
         let list = self.map.entry(id.peer).or_default();
         if let Some(last) = list.last_mut() {
-            let last_end = last.counter + last.cursor.rle_len() as Counter;
-            debug_assert!(last_end <= id.counter, "id:{}, {:#?}", id, &self);
-            if last_end == id.counter
+            let last_end = last.counter + last.cursor.rle_len() as Lamport;
+            debug_assert!(last_end <= id.lamport, "id:{}, {:#?}", id, &self);
+            if last_end == id.lamport
                 && last.cursor.can_merge(&cursor)
                 && last.cursor.rle_len() < MAX_FRAGMENT_LEN
             {
@@ -36,7 +36,7 @@ impl IdToCursor {
         }
 
         list.push(Fragment {
-            counter: id.counter,
+            counter: id.lamport,
             cursor,
         });
     }
@@ -48,7 +48,7 @@ impl IdToCursor {
         debug_assert!(!id_span.is_reversed());
         let list = self.map.get_mut(&id_span.client_id).unwrap();
         let last = list.last().unwrap();
-        debug_assert!(last.counter + last.cursor.rle_len() as Counter > id_span.counter.max());
+        debug_assert!(last.counter + last.cursor.rle_len() as Lamport > id_span.counter.max());
         let mut index = match list.binary_search_by_key(&id_span.counter.start, |x| x.counter) {
             Ok(index) => index,
             Err(index) => index.saturating_sub(1),
@@ -64,7 +64,7 @@ impl IdToCursor {
             let to =
                 ((id_span.counter.end - fragment.counter) as usize).min(fragment.cursor.rle_len());
             fragment.cursor.update_insert(from, to, new_leaf);
-            start_counter += (to - from) as Counter;
+            start_counter += (to - from) as Lamport;
             index += 1;
         }
 
@@ -83,8 +83,8 @@ impl IdToCursor {
                                     leaf: elem.leaf,
                                     id_span: IdSpan::new(
                                         *client_id,
-                                        f.counter + offset as Counter,
-                                        f.counter + offset as Counter + elem.len as Counter,
+                                        f.counter + offset as Lamport,
+                                        f.counter + offset as Lamport + elem.len as Lamport,
                                     ),
                                 };
                                 offset += elem.len;
@@ -93,7 +93,7 @@ impl IdToCursor {
                         }
                         Cursor::Delete(span) => {
                             let start_counter = f.counter;
-                            let end_counter = f.counter + span.atom_len() as Counter;
+                            let end_counter = f.counter + span.atom_len() as Lamport;
                             let id_span = IdSpan::new(*client_id, start_counter, end_counter);
                             Box::new(std::iter::once(IterCursor::Delete(id_span)))
                         }
@@ -130,14 +130,14 @@ impl IdToCursor {
                     if offset_in_insert_set == set.len() {
                         index += 1;
                         offset_in_insert_set = 0;
-                        counter = list.get(index).map(|x| x.counter).unwrap_or(Counter::MAX);
+                        counter = list.get(index).map(|x| x.counter).unwrap_or(Lamport::MAX);
                         continue;
                     }
 
                     offset_in_insert_set += 1;
                     let start_counter = counter;
                     let elem = set[offset_in_insert_set - 1];
-                    counter += elem.len as Counter;
+                    counter += elem.len as Lamport;
                     let end_counter = counter;
                     if end_counter <= iter_id_span.counter.start {
                         continue;
@@ -160,17 +160,17 @@ impl IdToCursor {
                     offset_in_insert_set = 0;
                     index += 1;
                     let start_counter = counter;
-                    counter = list.get(index).map(|x| x.counter).unwrap_or(Counter::MAX);
+                    counter = list.get(index).map(|x| x.counter).unwrap_or(Lamport::MAX);
                     if counter <= iter_id_span.counter.start {
                         continue;
                     }
 
                     let from = (iter_id_span.counter.start - start_counter)
                         .max(0)
-                        .min(span.atom_len() as Counter);
+                        .min(span.atom_len() as Lamport);
                     let to = (iter_id_span.counter.end - start_counter)
                         .max(0)
-                        .min(span.atom_len() as Counter);
+                        .min(span.atom_len() as Lamport);
                     if from == to {
                         continue;
                     }
@@ -183,14 +183,14 @@ impl IdToCursor {
 
     pub fn get_insert(&self, id: ID) -> Option<LeafIndex> {
         let list = self.map.get(&id.peer)?;
-        let index = match list.binary_search_by_key(&id.counter, |x| x.counter) {
+        let index = match list.binary_search_by_key(&id.lamport, |x| x.counter) {
             Ok(index) => index,
             Err(index) => index - 1,
         };
 
         list[index]
             .cursor
-            .get_insert((id.counter - list[index].counter) as usize)
+            .get_insert((id.lamport - list[index].counter) as usize)
     }
 
     #[allow(unused)]
@@ -214,7 +214,7 @@ impl IdToCursor {
 
 #[derive(Debug)]
 pub(super) struct Fragment {
-    pub(super) counter: Counter,
+    pub(super) counter: Lamport,
     pub(super) cursor: Cursor,
 }
 
@@ -239,8 +239,8 @@ impl Ord for Fragment {
 }
 
 impl Fragment {
-    fn counter_end(&self) -> Counter {
-        self.counter + self.cursor.rle_len() as Counter
+    fn counter_end(&self) -> Lamport {
+        self.counter + self.cursor.rle_len() as Lamport
     }
 }
 

@@ -131,7 +131,7 @@ fn travel_back_should_remove_styles() {
     doc.commit();
     let f = doc.state_frontiers();
     let mut f1 = f.clone();
-    f1[0].counter += 1;
+    f1[0].lamport += 1;
     text.mark(0..5, "bold", true).unwrap();
     doc.commit();
     let f2 = doc.state_frontiers();

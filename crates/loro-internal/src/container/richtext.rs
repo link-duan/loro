@@ -17,9 +17,9 @@ pub(crate) mod richtext_state;
 mod style_range_map;
 mod tracker;
 
-use crate::{change::Lamport, delta::StyleMeta, utils::string_slice::StringSlice, InternalString};
+use crate::{delta::StyleMeta, utils::string_slice::StringSlice, InternalString};
 use fugue_span::*;
-use loro_common::{Counter, LoroValue, PeerID, ID};
+use loro_common::{Lamport, LoroValue, PeerID, ID};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
@@ -48,7 +48,7 @@ pub struct Style {
 pub struct StyleOp {
     pub(crate) lamport: Lamport,
     pub(crate) peer: PeerID,
-    pub(crate) cnt: Counter,
+    pub(crate) cnt: Lamport,
     pub(crate) key: InternalString,
     pub(crate) value: LoroValue,
     pub(crate) info: TextStyleInfoFlag,
@@ -88,7 +88,7 @@ impl StyleOp {
         Self {
             lamport: n as Lamport,
             peer: n as PeerID,
-            cnt: n as Counter,
+            cnt: n as Lamport,
             key: key.to_string().into(),
             value,
             info,

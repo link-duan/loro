@@ -462,7 +462,7 @@ impl ContainerState for RichtextState {
                         Arc::new(StyleOp {
                             lamport: r_op.lamport,
                             peer: r_op.id.peer,
-                            cnt: r_op.id.counter,
+                            cnt: r_op.id.lamport,
                             key: key.clone(),
                             value: value.clone(),
                             info: *info,

@@ -12,8 +12,7 @@ use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
 use crate::{
-    change::Lamport,
-    id::{Counter, ID},
+    id::{Lamport, ID},
     oplog::AppDag,
     span::{CounterSpan, IdSpan},
     LoroError, PeerID,
@@ -26,7 +25,7 @@ use crate::{
 /// thus ID of `{client: A, counter: 1}` is out of the range.
 #[repr(transparent)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VersionVector(FxHashMap<PeerID, Counter>);
+pub struct VersionVector(FxHashMap<PeerID, Lamport>);
 
 /// Immutable version vector
 ///
@@ -36,18 +35,18 @@ pub struct VersionVector(FxHashMap<PeerID, Counter>);
 /// can be created from cloning and modifying other similar version vectors.
 #[repr(transparent)]
 #[derive(Debug, Clone, Default)]
-pub struct ImVersionVector(im::HashMap<PeerID, Counter, fxhash::FxBuildHasher>);
+pub struct ImVersionVector(im::HashMap<PeerID, Lamport, fxhash::FxBuildHasher>);
 
 impl ImVersionVector {
     pub fn clear(&mut self) {
         self.0.clear()
     }
 
-    pub fn get(&self, key: &PeerID) -> Option<&Counter> {
+    pub fn get(&self, key: &PeerID) -> Option<&Lamport> {
         self.0.get(key)
     }
 
-    pub fn insert(&mut self, k: PeerID, v: Counter) {
+    pub fn insert(&mut self, k: PeerID, v: Lamport) {
         self.0.insert(k, v);
     }
 
@@ -55,11 +54,11 @@ impl ImVersionVector {
         self.0.is_empty()
     }
 
-    pub fn iter(&self) -> im::hashmap::Iter<'_, PeerID, Counter> {
+    pub fn iter(&self) -> im::hashmap::Iter<'_, PeerID, Lamport> {
         self.0.iter()
     }
 
-    pub fn remove(&mut self, k: &PeerID) -> Option<Counter> {
+    pub fn remove(&mut self, k: &PeerID) -> Option<Lamport> {
         self.0.remove(k)
     }
 
@@ -225,7 +224,7 @@ impl PartialEq for ImVersionVector {
 impl Eq for ImVersionVector {}
 
 impl Deref for VersionVector {
-    type Target = FxHashMap<PeerID, Counter>;
+    type Target = FxHashMap<PeerID, Lamport>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -520,7 +519,7 @@ impl VersionVector {
                 if counter > 0 {
                     Some(ID {
                         peer: *client_id,
-                        counter: counter - 1,
+                        lamport: counter - 1,
                     })
                 } else {
                     None
@@ -537,11 +536,11 @@ impl VersionVector {
     /// set the inclusive ending point. target id will be included by self
     #[inline]
     pub fn set_last(&mut self, id: ID) {
-        self.0.insert(id.peer, id.counter + 1);
+        self.0.insert(id.peer, id.lamport + 1);
     }
 
     #[inline]
-    pub fn get_last(&self, client_id: PeerID) -> Option<Counter> {
+    pub fn get_last(&self, client_id: PeerID) -> Option<Lamport> {
         self.0
             .get(&client_id)
             .and_then(|&x| if x == 0 { None } else { Some(x - 1) })
@@ -550,7 +549,7 @@ impl VersionVector {
     /// set the exclusive ending point. target id will NOT be included by self
     #[inline]
     pub fn set_end(&mut self, id: ID) {
-        self.0.insert(id.peer, id.counter);
+        self.0.insert(id.peer, id.lamport);
     }
 
     /// Update the end counter of the given client if the end is greater.
@@ -558,14 +557,14 @@ impl VersionVector {
     #[inline]
     pub fn try_update_last(&mut self, id: ID) -> bool {
         if let Some(end) = self.0.get_mut(&id.peer) {
-            if *end < id.counter + 1 {
-                *end = id.counter + 1;
+            if *end < id.lamport + 1 {
+                *end = id.lamport + 1;
                 true
             } else {
                 false
             }
         } else {
-            self.0.insert(id.peer, id.counter + 1);
+            self.0.insert(id.peer, id.lamport + 1);
             true
         }
     }
@@ -610,7 +609,7 @@ impl VersionVector {
 
     pub fn includes_id(&self, id: ID) -> bool {
         if let Some(end) = self.get(&id.peer) {
-            if *end > id.counter {
+            if *end > id.lamport {
                 return true;
             }
         }
@@ -633,7 +632,7 @@ impl VersionVector {
 
     pub fn extend_to_include_vv<'a>(
         &mut self,
-        vv: impl Iterator<Item = (&'a PeerID, &'a Counter)>,
+        vv: impl Iterator<Item = (&'a PeerID, &'a Lamport)>,
     ) {
         for (&client_id, &counter) in vv {
             if let Some(my_counter) = self.get_mut(&client_id) {
@@ -648,8 +647,8 @@ impl VersionVector {
 
     pub fn extend_to_include_last_id(&mut self, id: ID) {
         if let Some(counter) = self.get_mut(&id.peer) {
-            if *counter <= id.counter {
-                *counter = id.counter + 1;
+            if *counter <= id.lamport {
+                *counter = id.lamport + 1;
             }
         } else {
             self.set_last(id)
@@ -658,8 +657,8 @@ impl VersionVector {
 
     pub fn extend_to_include_end_id(&mut self, id: ID) {
         if let Some(counter) = self.get_mut(&id.peer) {
-            if *counter < id.counter {
-                *counter = id.counter;
+            if *counter < id.lamport {
+                *counter = id.lamport;
             }
         } else {
             self.set_end(id)
@@ -766,7 +765,7 @@ impl VersionVector {
 impl ImVersionVector {
     pub fn extend_to_include_vv<'a>(
         &mut self,
-        vv: impl Iterator<Item = (&'a PeerID, &'a Counter)>,
+        vv: impl Iterator<Item = (&'a PeerID, &'a Lamport)>,
     ) {
         for (&client_id, &counter) in vv {
             if let Some(my_counter) = self.0.get_mut(&client_id) {
@@ -781,13 +780,13 @@ impl ImVersionVector {
 
     #[inline]
     pub fn set_last(&mut self, id: ID) {
-        self.0.insert(id.peer, id.counter + 1);
+        self.0.insert(id.peer, id.lamport + 1);
     }
 
     pub fn extend_to_include_last_id(&mut self, id: ID) {
         if let Some(counter) = self.0.get_mut(&id.peer) {
-            if *counter <= id.counter {
-                *counter = id.counter + 1;
+            if *counter <= id.lamport {
+                *counter = id.lamport + 1;
             }
         } else {
             self.set_last(id)
@@ -836,8 +835,8 @@ impl Default for VersionVector {
     }
 }
 
-impl From<FxHashMap<PeerID, Counter>> for VersionVector {
-    fn from(map: FxHashMap<PeerID, Counter>) -> Self {
+impl From<FxHashMap<PeerID, Lamport>> for VersionVector {
+    fn from(map: FxHashMap<PeerID, Lamport>) -> Self {
         let mut im_map = FxHashMap::default();
         for (client_id, counter) in map {
             im_map.insert(client_id, counter);
@@ -1041,14 +1040,14 @@ impl PatchedVersionVector {
     }
 
     #[inline]
-    pub fn get(&self, client_id: &PeerID) -> Option<&Counter> {
+    pub fn get(&self, client_id: &PeerID) -> Option<&Lamport> {
         self.patch
             .get(client_id)
             .or_else(|| self.base.get(client_id))
     }
 
     #[inline]
-    pub fn insert(&mut self, client_id: PeerID, counter: Counter) {
+    pub fn insert(&mut self, client_id: PeerID, counter: Lamport) {
         self.patch.insert(client_id, counter);
         self.omit_if_needless(client_id);
     }
@@ -1058,7 +1057,7 @@ impl PatchedVersionVector {
         self.patch.includes_id(id) || self.base.includes_id(id)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&PeerID, &Counter)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&PeerID, &Lamport)> {
         self.patch.iter().chain(
             self.base
                 .iter()

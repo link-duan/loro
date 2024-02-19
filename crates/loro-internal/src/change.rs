@@ -6,18 +6,17 @@
 
 use crate::{
     dag::DagNode,
-    id::{Counter, ID},
+    id::ID,
     op::Op,
     span::{HasId, HasLamport},
     version::Frontiers,
 };
-use loro_common::{HasCounter, HasCounterSpan, PeerID};
+use loro_common::{HasCounter, HasCounterSpan, Lamport, PeerID};
 use num::traits::AsPrimitive;
 use rle::{HasIndex, HasLength, Mergable, RleVec, Sliceable};
 use smallvec::SmallVec;
 
 pub type Timestamp = i64;
-pub type Lamport = u32;
 
 /// A `Change` contains a list of [Op]s.
 ///
@@ -93,10 +92,10 @@ impl<O> Change<O> {
 }
 
 impl<O: Mergable + HasLength + HasIndex + Debug> HasIndex for Change<O> {
-    type Int = Counter;
+    type Int = Lamport;
 
     fn get_start_index(&self) -> Self::Int {
-        self.id.counter
+        self.id.lamport
     }
 }
 
@@ -140,8 +139,8 @@ impl<O: Mergable + HasLength + HasIndex + Sliceable + HasCounter + Debug> Slicea
     fn slice(&self, from: usize, to: usize) -> Self {
         assert!(from < to);
         assert!(to <= self.atom_len());
-        let from_counter = self.id.counter + from as Counter;
-        let to_counter = self.id.counter + to as Counter;
+        let from_counter = self.id.lamport + from as Lamport;
+        let to_counter = self.id.lamport + to as Lamport;
         let ops = {
             if from >= to {
                 RleVec::new()
@@ -183,11 +182,11 @@ impl<O: Mergable + HasLength + HasIndex + Sliceable + HasCounter + Debug> Slicea
         Self {
             ops,
             deps: if from > 0 {
-                Frontiers::from_id(self.id.inc(from as Counter - 1))
+                Frontiers::from_id(self.id.inc(from as Lamport - 1))
             } else {
                 self.deps.clone()
             },
-            id: self.id.inc(from as Counter),
+            id: self.id.inc(from as Lamport),
             lamport: self.lamport + from as Lamport,
             timestamp: self.timestamp,
             has_dependents: self.has_dependents,
@@ -204,7 +203,7 @@ impl DagNode for Change {
 impl Change {
     pub fn can_merge_right(&self, other: &Self) -> bool {
         other.id.peer == self.id.peer
-            && other.id.counter == self.id.counter + self.content_len() as Counter
+            && other.id.lamport == self.id.lamport + self.content_len() as Lamport
             && other.deps.len() == 1
             && other.deps[0].peer == self.id.peer
     }

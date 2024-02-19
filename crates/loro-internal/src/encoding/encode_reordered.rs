@@ -4,8 +4,8 @@ use fxhash::{FxHashMap, FxHashSet};
 use generic_btree::rle::Sliceable;
 use itertools::Itertools;
 use loro_common::{
-    ContainerID, ContainerType, Counter, HasCounterSpan, HasId, HasIdSpan, HasLamportSpan, IdSpan,
-    InternalString, LoroError, LoroResult, PeerID, ID,
+    ContainerID, ContainerType, HasCounterSpan, HasId, HasIdSpan, HasLamportSpan, IdSpan,
+    InternalString, Lamport, LoroError, LoroResult, PeerID, ID,
 };
 use num_traits::FromPrimitive;
 use rle::HasLength;
@@ -93,7 +93,7 @@ pub(crate) fn encode_updates(oplog: &OpLog, vv: &VersionVector) -> Vec<u8> {
     let frontiers = oplog
         .frontiers()
         .iter()
-        .map(|x| (peer_register.register(&x.peer), x.counter))
+        .map(|x| (peer_register.register(&x.peer), x.lamport))
         .collect();
     let doc = EncodedDoc {
         ops: encoded_ops,
@@ -176,7 +176,7 @@ fn import_changes_to_oplog(
         oplog.latest_timestamp = oplog.latest_timestamp.max(change.timestamp);
         oplog.dag.vv.extend_to_include_end_id(ID {
             peer: change.id.peer,
-            counter: change.id.counter + change.atom_len() as Counter,
+            lamport: change.id.lamport + change.atom_len() as Lamport,
         });
         oplog.insert_new_change(change, mark);
     }
@@ -213,7 +213,7 @@ fn decode_changes<'a>(
         }
 
         let counter = counters[peer_idx];
-        counters[peer_idx] += len as Counter;
+        counters[peer_idx] += len as Lamport;
         let peer = peer_ids.peer_ids[peer_idx];
         let mut change: Change = Change {
             id: ID::new(peer, counter),
@@ -454,7 +454,7 @@ pub(crate) fn encode_snapshot(oplog: &OpLog, state: &DocState, vv: &VersionVecto
     let frontiers = oplog
         .frontiers()
         .iter()
-        .map(|x| (peer_register.register(&x.peer), x.counter))
+        .map(|x| (peer_register.register(&x.peer), x.lamport))
         .collect();
     let doc = EncodedDoc {
         ops: encoded_ops,
@@ -536,7 +536,7 @@ fn calc_sorted_ops_for_snapshot<'a>(
                     origin_top = origin_ops.pop();
                 } else {
                     let delta =
-                        inner_pos_top.start_id.counter - inner_origin_top.id_start().counter;
+                        inner_pos_top.start_id.lamport - inner_origin_top.id_start().lamport;
                     let right = inner_origin_top.split(delta as usize);
                     ops.push(inner_origin_top);
                     origin_top = Some(right);
@@ -755,13 +755,13 @@ fn decode_snapshot_states(
 
 mod encode {
     use fxhash::FxHashMap;
-    use loro_common::{ContainerID, ContainerType, HasId, PeerID, ID};
+    use loro_common::{ContainerID, ContainerType, HasId, Lamport, PeerID, ID};
     use num_traits::ToPrimitive;
     use rle::{HasLength, Sliceable};
     use std::borrow::Cow;
 
     use crate::{
-        change::{Change, Lamport},
+        change::Change,
         container::idx::ContainerIdx,
         encoding::encode_reordered::value::{EncodedTreeMove, ValueWriter},
         op::Op,
@@ -902,7 +902,7 @@ mod encode {
                     dep_on_self = true;
                 } else {
                     deps_len += 1;
-                    dep_arena.push(peer_register.register(&dep.peer), dep.counter);
+                    dep_arena.push(peer_register.register(&dep.peer), dep.lamport);
                 }
             }
 
@@ -1005,8 +1005,8 @@ mod encode {
                 peer_register.register(&change.id.peer);
                 start_counters.push(start_cnt);
             }
-            if change.id.counter < start_cnt {
-                let offset = start_cnt - change.id.counter;
+            if change.id.lamport < start_cnt {
+                let offset = start_cnt - change.id.lamport;
                 diff_changes.push(Cow::Owned(change.slice(offset as usize, change.atom_len())));
             } else {
                 diff_changes.push(Cow::Borrowed(change));
@@ -1278,12 +1278,12 @@ fn extract_containers_in_order(
                 (
                     ContainerID::Normal {
                         peer: peer_a,
-                        counter: counter_a,
+                        lamport: counter_a,
                         ..
                     },
                     ContainerID::Normal {
                         peer: peer_b,
-                        counter: counter_b,
+                        lamport: counter_b,
                         ..
                     },
                 ) => peer_a.cmp(peer_b).then_with(|| counter_a.cmp(counter_b)),
@@ -1316,8 +1316,8 @@ struct EncodedDoc<'a> {
     #[columnar(class = "vec", iter = "EncodedStateInfo")]
     states: Vec<EncodedStateInfo>,
     /// The first counter value for each change of each peer in `changes`
-    start_counters: Vec<Counter>,
-    frontiers: Vec<(PeerIdx, Counter)>,
+    start_counters: Vec<Lamport>,
+    frontiers: Vec<(PeerIdx, Lamport)>,
     #[columnar(borrow)]
     raw_values: Cow<'a, [u8]>,
 
@@ -1380,7 +1380,7 @@ mod value {
 
     use fxhash::FxHashMap;
     use loro_common::{
-        ContainerID, ContainerType, Counter, InternalString, LoroError, LoroResult, LoroValue,
+        ContainerID, ContainerType, InternalString, Lamport, LoroError, LoroResult, LoroValue,
         PeerID, TreeID, ID,
     };
 
@@ -1431,7 +1431,7 @@ mod value {
                     *(peer_ids
                         .get(self.subject_peer_idx)
                         .ok_or(LoroError::DecodeDataCorruptionError)?),
-                    self.subject_cnt as Counter,
+                    self.subject_cnt as Lamport,
                 ),
                 parent: if self.is_parent_null {
                     None
@@ -1440,7 +1440,7 @@ mod value {
                         *(peer_ids
                             .get(self.parent_peer_idx)
                             .ok_or(LoroError::DecodeDataCorruptionError)?),
-                        self.parent_cnt as Counter,
+                        self.parent_cnt as Lamport,
                     ))
                 },
             })
@@ -2325,7 +2325,7 @@ mod arena {
                     peer: *(peer_arena
                         .get(self.peer_idx)
                         .ok_or(LoroError::DecodeDataCorruptionError)?),
-                    counter: self.key_idx_or_counter,
+                    lamport: self.key_idx_or_counter,
                 })
             }
         }
@@ -2378,7 +2378,7 @@ mod arena {
                 ContainerID::Normal {
                     container_type,
                     peer,
-                    counter,
+                    lamport: counter,
                 } => (
                     false,
                     container_type,
@@ -2477,7 +2477,11 @@ mod test {
         let mut cid_reg: ValueRegister<ContainerID> = ValueRegister::new();
         let id = match &container_id {
             Some(ContainerID::Root { .. }) => ID::new(u64::MAX, 0),
-            Some(ContainerID::Normal { peer, counter, .. }) => ID::new(*peer, *counter),
+            Some(ContainerID::Normal {
+                peer,
+                lamport: counter,
+                ..
+            }) => ID::new(*peer, *counter),
             None => ID::new(u64::MAX, 0),
         };
 

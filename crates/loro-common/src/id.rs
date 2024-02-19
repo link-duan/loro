@@ -1,6 +1,6 @@
 use crate::{span::IdSpan, CounterSpan};
 
-use super::{Counter, LoroError, PeerID, ID};
+use super::{Lamport, LoroError, PeerID, ID};
 const UNKNOWN: PeerID = 404;
 use std::{
     fmt::{Debug, Display},
@@ -9,13 +9,13 @@ use std::{
 
 impl Debug for ID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(format!("{}@{}", self.counter, self.peer).as_str())
+        f.write_str(format!("{}@{}", self.lamport, self.peer).as_str())
     }
 }
 
 impl Display for ID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(format!("{}@{}", self.counter, self.peer).as_str())
+        f.write_str(format!("{}@{}", self.lamport, self.peer).as_str())
     }
 }
 
@@ -31,7 +31,7 @@ impl TryFrom<&str> for ID {
         let counter = iter
             .next()
             .unwrap()
-            .parse::<Counter>()
+            .parse::<Lamport>()
             .map_err(|_| LoroError::DecodeError("Invalid ID format".into()))?;
         let client_id = iter
             .next()
@@ -40,7 +40,7 @@ impl TryFrom<&str> for ID {
             .map_err(|_| LoroError::DecodeError("Invalid ID format".into()))?;
         Ok(ID {
             peer: client_id,
-            counter,
+            lamport: counter,
         })
     }
 }
@@ -54,7 +54,7 @@ impl PartialOrd for ID {
 impl Ord for ID {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         match self.peer.cmp(&other.peer) {
-            core::cmp::Ordering::Equal => self.counter.cmp(&other.counter),
+            core::cmp::Ordering::Equal => self.lamport.cmp(&other.lamport),
             ord => ord,
         }
     }
@@ -62,14 +62,14 @@ impl Ord for ID {
 
 pub const ROOT_ID: ID = ID {
     peer: PeerID::MAX,
-    counter: i32::MAX,
+    lamport: i32::MAX,
 };
 
 impl From<u128> for ID {
     fn from(id: u128) -> Self {
         ID {
             peer: (id >> 64) as PeerID,
-            counter: id as Counter,
+            lamport: id as Lamport,
         }
     }
 }
@@ -79,8 +79,11 @@ impl ID {
     pub const NONE_ID: ID = ID::new(u64::MAX, 0);
 
     #[inline]
-    pub const fn new(peer: PeerID, counter: Counter) -> Self {
-        ID { peer, counter }
+    pub const fn new(peer: PeerID, counter: Lamport) -> Self {
+        ID {
+            peer,
+            lamport: counter,
+        }
     }
 
     #[inline]
@@ -97,15 +100,15 @@ impl ID {
     pub fn to_span(&self, len: usize) -> IdSpan {
         IdSpan {
             client_id: self.peer,
-            counter: CounterSpan::new(self.counter, self.counter + len as Counter),
+            counter: CounterSpan::new(self.lamport, self.lamport + len as Lamport),
         }
     }
 
     #[inline]
-    pub fn unknown(counter: Counter) -> Self {
+    pub fn unknown(counter: Lamport) -> Self {
         ID {
             peer: UNKNOWN,
-            counter,
+            lamport: counter,
         }
     }
 
@@ -117,28 +120,28 @@ impl ID {
     #[inline]
     #[allow(dead_code)]
     pub(crate) fn is_connected_id(&self, other: &Self, self_len: usize) -> bool {
-        self.peer == other.peer && self.counter + self_len as Counter == other.counter
+        self.peer == other.peer && self.lamport + self_len as Lamport == other.lamport
     }
 
     #[inline]
     pub fn inc(&self, inc: i32) -> Self {
         ID {
             peer: self.peer,
-            counter: self.counter + inc,
+            lamport: self.lamport + inc,
         }
     }
 
     #[inline]
-    pub fn contains(&self, len: Counter, target: ID) -> bool {
+    pub fn contains(&self, len: Lamport, target: ID) -> bool {
         self.peer == target.peer
-            && self.counter <= target.counter
-            && target.counter < self.counter + len
+            && self.lamport <= target.lamport
+            && target.lamport < self.lamport + len
     }
 }
 
 impl From<ID> for u128 {
     fn from(id: ID) -> Self {
-        ((id.peer as u128) << 64) | id.counter as u128
+        ((id.peer as u128) << 64) | id.lamport as u128
     }
 }
 

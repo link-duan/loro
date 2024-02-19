@@ -317,7 +317,7 @@ impl Actionable for Vec<Actor> {
                             let txn = actor.loro.txn().unwrap();
                             let id = txn.next_id();
                             *target_peer = id.peer;
-                            *target_counter = id.counter;
+                            *target_counter = id.lamport;
                         }
                         TreeAction::Move => {
                             let target_idx = *target_peer as usize % tree_num;

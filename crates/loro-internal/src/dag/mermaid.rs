@@ -1,6 +1,6 @@
 use super::*;
 struct BreakPoints {
-    break_points: FxHashMap<PeerID, FxHashSet<Counter>>,
+    break_points: FxHashMap<PeerID, FxHashSet<Lamport>>,
     /// start ID to ID. The target ID may be in the middle of an op.
     ///
     /// only includes links across different clients
@@ -60,7 +60,7 @@ fn to_str(output: Output) -> String {
         for id_to in id_tos.iter() {
             s += format!(
                 "{}-{} --> {}-{}",
-                id_from.peer, id_from.counter, id_to.peer, id_to.counter
+                id_from.peer, id_from.lamport, id_to.peer, id_to.lamport
             )
             .as_str();
             new_line!();
@@ -75,11 +75,11 @@ fn break_points_to_output(input: BreakPoints) -> Output {
         clients: FxHashMap::default(),
         links: FxHashMap::default(),
     };
-    let breaks: FxHashMap<PeerID, Vec<Counter>> = input
+    let breaks: FxHashMap<PeerID, Vec<Lamport>> = input
         .break_points
         .into_iter()
         .map(|(client_id, set)| {
-            let mut vec: Vec<Counter> = set.iter().cloned().collect();
+            let mut vec: Vec<Lamport> = set.iter().cloned().collect();
             vec.sort();
             (client_id, vec)
         })
@@ -95,7 +95,7 @@ fn break_points_to_output(input: BreakPoints) -> Output {
     for (id_from, id_tos) in input.links.iter() {
         for id_to in id_tos {
             let client_breaks = breaks.get(&id_to.peer).unwrap();
-            match client_breaks.binary_search(&id_to.counter) {
+            match client_breaks.binary_search(&id_to.lamport) {
                 Ok(_) => {
                     output.links.entry(*id_from).or_default().push(*id_to);
                 }
@@ -121,8 +121,8 @@ fn get_dag_break_points<T: DagNode>(dag: &impl Dag<Node = T>) -> BreakPoints {
     for node in dag.iter() {
         let id = node.id_start();
         let set = break_points.break_points.entry(id.peer).or_default();
-        set.insert(id.counter);
-        set.insert(id.counter + node.content_len() as Counter);
+        set.insert(id.lamport);
+        set.insert(id.lamport + node.content_len() as Lamport);
         for dep in node.deps() {
             if dep.peer == id.peer {
                 continue;
@@ -132,7 +132,7 @@ fn get_dag_break_points<T: DagNode>(dag: &impl Dag<Node = T>) -> BreakPoints {
                 .break_points
                 .entry(dep.peer)
                 .or_default()
-                .insert(dep.counter);
+                .insert(dep.lamport);
             break_points.links.entry(id).or_default().push(*dep);
         }
     }

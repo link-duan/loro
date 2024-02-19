@@ -224,7 +224,7 @@ impl<'a, T: DagNode, D: Dag<Node = T> + Debug> DagCausalIter<'a, D> {
                     .filter(|&dep| {
                         if let Some(span) = target.get(&dep.peer) {
                             let included_in_target =
-                                dep.counter >= span.min() && dep.counter <= span.max();
+                                dep.lamport >= span.min() && dep.lamport <= span.max();
                             if included_in_target {
                                 succ.entry(*dep).or_default().push(id);
                             }
@@ -236,7 +236,7 @@ impl<'a, T: DagNode, D: Dag<Node = T> + Debug> DagCausalIter<'a, D> {
                     .count(),
             );
             let target_span = target.get(&client).unwrap();
-            let last_counter = node.id_last().counter;
+            let last_counter = node.id_last().lamport;
             if target_span.max() > last_counter {
                 q.push(ID::new(client, last_counter + 1))
             }
@@ -278,7 +278,7 @@ impl<'a, T: DagNode + 'a, D: Dag<Node = T>> Iterator for DagCausalIter<'a, D> {
         let node_id = self.stack.pop().unwrap();
         let target_span = self.target.get_mut(&node_id.peer).unwrap();
         debug_assert_eq!(
-            node_id.counter,
+            node_id.lamport,
             target_span.min(),
             "{} {:?}",
             node_id,
@@ -301,7 +301,7 @@ impl<'a, T: DagNode + 'a, D: Dag<Node = T>> Iterator for DagCausalIter<'a, D> {
         };
         assert!(slice_end > slice_from);
 
-        let last_counter = node.id_last().counter;
+        let last_counter = node.id_last().lamport;
         target_span.set_start(last_counter + 1);
 
         let deps: SmallVec<[_; 2]> = if slice_from == 0 {

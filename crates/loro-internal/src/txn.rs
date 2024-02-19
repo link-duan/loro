@@ -12,7 +12,7 @@ use rle::{HasLength, Mergable, RleVec};
 use smallvec::{smallvec, SmallVec};
 
 use crate::{
-    change::{get_sys_timestamp, Change, Lamport, Timestamp},
+    change::{get_sys_timestamp, Change, Timestamp},
     container::{
         idx::ContainerIdx,
         list::list_op::{DeleteSpan, InnerListOp},
@@ -24,7 +24,7 @@ use crate::{
     },
     event::Diff,
     handler::ValueOrContainer,
-    id::{Counter, PeerID, ID},
+    id::{Lamport, PeerID, ID},
     op::{Op, RawOp, RawOpContent},
     span::HasIdSpan,
     version::Frontiers,
@@ -45,8 +45,8 @@ pub struct Transaction {
     global_txn: Weak<Mutex<Option<Transaction>>>,
     peer: PeerID,
     origin: InternalString,
-    start_counter: Counter,
-    next_counter: Counter,
+    start_counter: Lamport,
+    next_counter: Lamport,
     start_lamport: Lamport,
     next_lamport: Lamport,
     state: Arc<Mutex<DocState>>,
@@ -206,7 +206,7 @@ impl Transaction {
         let arena = state_lock.arena.clone();
         let frontiers = state_lock.frontiers.clone();
         let peer = state_lock.peer;
-        let next_counter = oplog_lock.next_id(peer).counter;
+        let next_counter = oplog_lock.next_id(peer).lamport;
         let next_lamport = oplog_lock.dag.frontiers_to_next_lamport(&frontiers);
         drop(state_lock);
         drop(oplog_lock);
@@ -341,7 +341,7 @@ impl Transaction {
         let raw_op = RawOp {
             id: ID {
                 peer: self.peer,
-                counter: self.next_counter,
+                lamport: self.next_counter,
             },
             lamport: self.next_lamport,
             container,
@@ -368,7 +368,7 @@ impl Transaction {
             }
         }
         self.local_ops.push(op);
-        self.next_counter += len as Counter;
+        self.next_counter += len as Lamport;
         self.next_lamport += len as Lamport;
         Ok(())
     }
@@ -422,7 +422,7 @@ impl Transaction {
     pub fn next_id(&self) -> ID {
         ID {
             peer: self.peer,
-            counter: self.next_counter,
+            lamport: self.next_counter,
         }
     }
 

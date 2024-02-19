@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, ops::Deref};
 
 use crate::{change::Change, OpLog, VersionVector};
 use fxhash::FxHashMap;
-use loro_common::{Counter, CounterSpan, HasCounterSpan, HasIdSpan, HasLamportSpan, PeerID, ID};
+use loro_common::{CounterSpan, HasCounterSpan, HasIdSpan, HasLamportSpan, Lamport, PeerID, ID};
 use smallvec::SmallVec;
 
 #[derive(Debug)]
@@ -27,7 +27,7 @@ impl Deref for PendingChange {
 
 #[derive(Debug, Default)]
 pub(crate) struct PendingChanges {
-    changes: FxHashMap<PeerID, BTreeMap<Counter, SmallVec<[PendingChange; 1]>>>,
+    changes: FxHashMap<PeerID, BTreeMap<Lamport, SmallVec<[PendingChange; 1]>>>,
 }
 
 impl PendingChanges {
@@ -50,7 +50,7 @@ impl OpLog {
                     .changes
                     .entry(miss_dep.peer)
                     .or_default()
-                    .entry(miss_dep.counter)
+                    .entry(miss_dep.lamport)
                     .or_default()
                     .push(local_change),
                 _ => unreachable!(),
@@ -78,7 +78,7 @@ impl OpLog {
             };
 
             let mut to_remove = Vec::new();
-            for (cnt, _) in tree.range_mut(0..=id.counter) {
+            for (cnt, _) in tree.range_mut(0..=id.lamport) {
                 to_remove.push(*cnt);
             }
 
@@ -106,7 +106,7 @@ impl OpLog {
                             .changes
                             .entry(miss_dep.peer)
                             .or_default()
-                            .entry(miss_dep.counter)
+                            .entry(miss_dep.lamport)
                             .or_default()
                             .push(pending_change),
                     }
@@ -162,7 +162,7 @@ fn remote_change_apply_state(vv: &VersionVector, change: &Change) -> ChangeState
     }
     for dep in change.deps.as_ref().iter() {
         let dep_vv_latest_ctr = vv.get(&dep.peer).copied().unwrap_or(0);
-        if dep_vv_latest_ctr - 1 < dep.counter {
+        if dep_vv_latest_ctr - 1 < dep.lamport {
             return ChangeState::AwaitingMissingDependency(*dep);
         }
     }

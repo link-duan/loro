@@ -145,7 +145,11 @@ impl From<&ContainerID> for ContainerIdRaw {
     fn from(id: &ContainerID) -> Self {
         match id {
             ContainerID::Root { name, .. } => ContainerIdRaw::Root { name: name.clone() },
-            ContainerID::Normal { peer, counter, .. } => ContainerIdRaw::Normal {
+            ContainerID::Normal {
+                peer,
+                lamport: counter,
+                ..
+            } => ContainerIdRaw::Normal {
                 id: ID::new(*peer, *counter),
             },
         }
@@ -156,7 +160,11 @@ impl From<ContainerID> for ContainerIdRaw {
     fn from(id: ContainerID) -> Self {
         match id {
             ContainerID::Root { name, .. } => ContainerIdRaw::Root { name },
-            ContainerID::Normal { peer, counter, .. } => ContainerIdRaw::Normal {
+            ContainerID::Normal {
+                peer,
+                lamport: counter,
+                ..
+            } => ContainerIdRaw::Normal {
                 id: ID::new(peer, counter),
             },
         }
@@ -172,7 +180,7 @@ impl ContainerIdRaw {
             },
             ContainerIdRaw::Normal { id } => ContainerID::Normal {
                 peer: id.peer,
-                counter: id.counter,
+                lamport: id.lamport,
                 container_type,
             },
         }
