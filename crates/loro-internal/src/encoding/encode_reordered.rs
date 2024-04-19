@@ -1152,7 +1152,7 @@ mod encode {
                 let key = register_key.register(&map.key);
                 key as i32
             }
-            crate::op::InnerContent::Tree(..) => 0,
+            // crate::op::InnerContent::Tree(..) => 0,
             crate::op::InnerContent::Unknown { .. } => 0,
         }
     }
@@ -1164,7 +1164,7 @@ mod encode {
                 let key = register_key.register(&map.key);
                 key as i32
             }
-            crate::op::InnerContent::Tree(..) => 0,
+            // crate::op::InnerContent::Tree(..) => 0,
             crate::op::InnerContent::Unknown { .. } => 0,
         }
     }
@@ -1238,14 +1238,14 @@ mod encode {
                     None => (ValueKind::DeleteOnce, 0),
                 }
             }
-            crate::op::InnerContent::Tree(t) => {
-                assert_eq!(op.container.get_type(), ContainerType::Tree);
-                let op = EncodedTreeMove::from_tree_op(t, register_peer);
-                (
-                    ValueKind::TreeMove,
-                    value_writer.write(&Value::TreeMove(op), register_key, register_cid),
-                )
-            }
+            // crate::op::InnerContent::Tree(t) => {
+            //     assert_eq!(op.container.get_type(), ContainerType::Tree);
+            //     let op = EncodedTreeMove::from_tree_op(t, register_peer);
+            //     (
+            //         ValueKind::TreeMove,
+            //         value_writer.write(&Value::TreeMove(op), register_key, register_cid),
+            //     )
+            // }
             crate::op::InnerContent::Unknown { op_len, data } => {
                 let len = value_writer.write_i64(*op_len as i64);
                 (
@@ -1378,13 +1378,13 @@ fn decode_op(
                 _ => unreachable!(),
             }
         }
-        ContainerType::Tree => match kind {
-            ValueKind::TreeMove => {
-                let op = value_reader.read_tree_move()?;
-                crate::op::InnerContent::Tree(op.as_tree_op(peers)?)
-            }
-            _ => unreachable!(),
-        },
+        // ContainerType::Tree => match kind {
+        //     ValueKind::TreeMove => {
+        //         let op = value_reader.read_tree_move()?;
+        //         crate::op::InnerContent::Tree(op.as_tree_op(peers)?)
+        //     }
+        //     _ => unreachable!(),
+        // },
         ContainerType::Unknown(k) => {
             // TODO: read unknown
             let bytes = value_reader.take_bytes(length);
@@ -1566,7 +1566,7 @@ mod value {
     };
 
     use super::{encode::ValueRegister, MAX_COLLECTION_SIZE};
-    use crate::container::tree::tree_op::TreeOp;
+    // use crate::container::tree::tree_op::TreeOp;
     use num_traits::{FromPrimitive, ToPrimitive};
 
     #[allow(unused)]
@@ -1605,38 +1605,38 @@ mod value {
         pub parent_cnt: usize,
     }
 
-    impl EncodedTreeMove {
-        pub fn as_tree_op(&self, peer_ids: &[u64]) -> LoroResult<TreeOp> {
-            Ok(TreeOp {
-                target: TreeID::new(
-                    *(peer_ids
-                        .get(self.subject_peer_idx)
-                        .ok_or(LoroError::DecodeDataCorruptionError)?),
-                    self.subject_cnt as Counter,
-                ),
-                parent: if self.is_parent_null {
-                    None
-                } else {
-                    Some(TreeID::new(
-                        *(peer_ids
-                            .get(self.parent_peer_idx)
-                            .ok_or(LoroError::DecodeDataCorruptionError)?),
-                        self.parent_cnt as Counter,
-                    ))
-                },
-            })
-        }
+    // impl EncodedTreeMove {
+    //     pub fn as_tree_op(&self, peer_ids: &[u64]) -> LoroResult<TreeOp> {
+    //         Ok(TreeOp {
+    //             target: TreeID::new(
+    //                 *(peer_ids
+    //                     .get(self.subject_peer_idx)
+    //                     .ok_or(LoroError::DecodeDataCorruptionError)?),
+    //                 self.subject_cnt as Counter,
+    //             ),
+    //             parent: if self.is_parent_null {
+    //                 None
+    //             } else {
+    //                 Some(TreeID::new(
+    //                     *(peer_ids
+    //                         .get(self.parent_peer_idx)
+    //                         .ok_or(LoroError::DecodeDataCorruptionError)?),
+    //                     self.parent_cnt as Counter,
+    //                 ))
+    //             },
+    //         })
+    //     }
 
-        pub fn from_tree_op(op: &TreeOp, register_peer_id: &mut ValueRegister<PeerID>) -> Self {
-            EncodedTreeMove {
-                subject_peer_idx: register_peer_id.register(&op.target.peer),
-                subject_cnt: op.target.counter as usize,
-                is_parent_null: op.parent.is_none(),
-                parent_peer_idx: op.parent.map_or(0, |x| register_peer_id.register(&x.peer)),
-                parent_cnt: op.parent.map_or(0, |x| x.counter as usize),
-            }
-        }
-    }
+    //     pub fn from_tree_op(op: &TreeOp, register_peer_id: &mut ValueRegister<PeerID>) -> Self {
+    //         EncodedTreeMove {
+    //             subject_peer_idx: register_peer_id.register(&op.target.peer),
+    //             subject_cnt: op.target.counter as usize,
+    //             is_parent_null: op.parent.is_none(),
+    //             parent_peer_idx: op.parent.map_or(0, |x| register_peer_id.register(&x.peer)),
+    //             parent_cnt: op.parent.map_or(0, |x| x.counter as usize),
+    //         }
+    //     }
+    // }
 
     #[derive(Debug)]
     pub enum ValueKind {
@@ -2718,16 +2718,16 @@ mod test {
         //     LoroValue::Container(ContainerID::new_root("name", ContainerType::Text)),
         //     Some(ContainerID::new_root("name", ContainerType::Text)),
         // );
-        test_loro_value_read_write(
-            LoroValue::Container(ContainerID::new_normal(
-                ID::new(u64::MAX, 123),
-                ContainerType::Tree,
-            )),
-            Some(ContainerID::new_normal(
-                ID::new(u64::MAX, 123),
-                ContainerType::Tree,
-            )),
-        );
+        // test_loro_value_read_write(
+        //     LoroValue::Container(ContainerID::new_normal(
+        //         ID::new(u64::MAX, 123),
+        //         ContainerType::Tree,
+        //     )),
+        //     Some(ContainerID::new_normal(
+        //         ID::new(u64::MAX, 123),
+        //         ContainerType::Tree,
+        //     )),
+        // );
         test_loro_value_read_write(vec![1i32, 2, 3], None);
         test_loro_value_read_write(
             LoroValue::Map(Arc::new(fx_map![

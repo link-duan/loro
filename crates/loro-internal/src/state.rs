@@ -12,7 +12,7 @@ use crate::{
     configure::{Configure, DefaultRandom, SecureRandomGenerator},
     container::{
         idx::ContainerIdx, list::list_op::ListOp, map::MapSet, richtext::config::StyleConfigMap,
-        tree::tree_op::TreeOp, ContainerIdRaw,
+      ContainerIdRaw,
     },
     cursor::Cursor,
     delta::DeltaItem,
@@ -30,12 +30,12 @@ use crate::{
 mod list_state;
 mod map_state;
 mod richtext_state;
-mod tree_state;
+// mod tree_state;
 
 pub(crate) use list_state::ListState;
 pub(crate) use map_state::MapState;
 pub(crate) use richtext_state::RichtextState;
-pub(crate) use tree_state::{get_meta_value, TreeParentId, TreeState};
+// pub(crate) use tree_state::{get_meta_value, TreeParentId, TreeState};
 
 use super::{arena::SharedArena, event::InternalDocDiff};
 
@@ -206,7 +206,7 @@ pub enum State {
     ListState(Box<ListState>),
     MapState(Box<MapState>),
     RichtextState(Box<RichtextState>),
-    TreeState(Box<TreeState>),
+    // TreeState(Box<TreeState>),
 }
 
 impl State {
@@ -222,9 +222,9 @@ impl State {
         Self::RichtextState(Box::new(RichtextState::new(idx, config)))
     }
 
-    pub fn new_tree(idx: ContainerIdx) -> Self {
-        Self::TreeState(Box::new(TreeState::new(idx)))
-    }
+    // pub fn new_tree(idx: ContainerIdx) -> Self {
+    //     Self::TreeState(Box::new(TreeState::new(idx)))
+    // }
 }
 
 impl DocState {
@@ -531,13 +531,13 @@ impl DocState {
                     self.arena.set_parent(idx, Some(container));
                 }
             }
-            RawOpContent::Tree(TreeOp { target, .. }) => {
-                // create associated metadata container
-                // TODO: maybe we could create map container only when setting metadata
-                let container_id = target.associated_meta_container();
-                let child_idx = self.arena.register_container(&container_id);
-                self.arena.set_parent(child_idx, Some(container));
-            }
+            // RawOpContent::Tree(TreeOp { target, .. }) => {
+            //     // create associated metadata container
+            //     // TODO: maybe we could create map container only when setting metadata
+            //     let container_id = target.associated_meta_container();
+            //     let child_idx = self.arena.register_container(&container_id);
+            //     self.arena.set_parent(child_idx, Some(container));
+            // }
             RawOpContent::Unknown { .. } => unreachable!(),
         }
     }
@@ -568,14 +568,14 @@ impl DocState {
                     }
                 }
             }
-            InternalDiff::Tree(tree) => {
-                for diff in tree.diff.iter() {
-                    let target = &diff.target;
-                    let container_id = target.associated_meta_container();
-                    let child_idx = self.arena.register_container(&container_id);
-                    self.arena.set_parent(child_idx, Some(container));
-                }
-            }
+            // InternalDiff::Tree(tree) => {
+            //     for diff in tree.diff.iter() {
+            //         let target = &diff.target;
+            //         let container_id = target.associated_meta_container();
+            //         let child_idx = self.arena.register_container(&container_id);
+            //         self.arena.set_parent(child_idx, Some(container));
+            //     }
+            // }
             InternalDiff::RichtextRaw(_) => {}
         }
     }
@@ -848,27 +848,27 @@ impl DocState {
         match value {
             LoroValue::Container(_) => unreachable!(),
             LoroValue::List(mut list) => {
-                if container.get_type() == ContainerType::Tree {
-                    // Each tree node has an associated map container to represent
-                    // the metadata of this node. When the user get the deep value,
-                    // we need to add a field named `meta` to the tree node,
-                    // whose value is deep value of map container.
-                    get_meta_value(Arc::make_mut(&mut list), self);
-                } else {
-                    if list.iter().all(|x| !x.is_container()) {
-                        return LoroValue::List(list);
-                    }
+                // if container.get_type() == ContainerType::Tree {
+                //     // Each tree node has an associated map container to represent
+                //     // the metadata of this node. When the user get the deep value,
+                //     // we need to add a field named `meta` to the tree node,
+                //     // whose value is deep value of map container.
+                //     get_meta_value(Arc::make_mut(&mut list), self);
+                // } else {
+                if list.iter().all(|x| !x.is_container()) {
+                    return LoroValue::List(list);
+                }
 
-                    let list_mut = Arc::make_mut(&mut list);
-                    for item in list_mut.iter_mut() {
-                        if item.is_container() {
-                            let container = item.as_container().unwrap();
-                            let container_idx = self.arena.register_container(container);
-                            let value = self.get_container_deep_value(container_idx);
-                            *item = value;
-                        }
+                let list_mut = Arc::make_mut(&mut list);
+                for item in list_mut.iter_mut() {
+                    if item.is_container() {
+                        let container = item.as_container().unwrap();
+                        let container_idx = self.arena.register_container(container);
+                        let value = self.get_container_deep_value(container_idx);
+                        *item = value;
                     }
                 }
+                // }
                 LoroValue::List(list)
             }
             LoroValue::Map(mut map) => {
@@ -1081,7 +1081,7 @@ impl DocState {
                 idx,
                 self.config.text_style_config.clone(),
             ))),
-            ContainerType::Tree => State::TreeState(Box::new(TreeState::new(idx))),
+            // ContainerType::Tree => State::TreeState(Box::new(TreeState::new(idx))),
             ContainerType::Unknown(_) => unreachable!(),
         }
     }
@@ -1093,7 +1093,9 @@ impl DocState {
             match state {
                 State::ListState(s) => s.get_index_of_id(id),
                 State::RichtextState(s) => s.get_index_of_id(id),
-                State::MapState(_) | State::TreeState(_) => {
+                State::MapState(_) 
+                // | State::TreeState(_) 
+                 => {
                     unreachable!()
                 }
             }
@@ -1105,7 +1107,9 @@ impl DocState {
             match state {
                 State::ListState(s) => Some(s.len()),
                 State::RichtextState(s) => Some(s.len_event()),
-                State::MapState(_) | State::TreeState(_) => {
+                State::MapState(_) 
+                // | State::TreeState(_) 
+                => {
                     unreachable!()
                 }
             }
@@ -1143,11 +1147,11 @@ impl DocState {
                     state_idx = self.arena.register_container(c);
                 }
                 State::RichtextState(_) => return None,
-                State::TreeState(_) => {
-                    let id = index.as_node()?;
-                    let cid = id.associated_meta_container();
-                    state_idx = self.arena.register_container(&cid);
-                }
+                // State::TreeState(_) => {
+                //     let id = index.as_node()?;
+                //     let cid = id.associated_meta_container();
+                //     state_idx = self.arena.register_container(&cid);
+                // }
             }
         }
 
@@ -1162,11 +1166,11 @@ impl DocState {
                     .nth(*index.as_seq()?)
                     .map(|c| c.to_string().into())?
             }
-            State::TreeState(_) => {
-                let id = index.as_node()?;
-                let cid = id.associated_meta_container();
-                cid.into()
-            }
+            // State::TreeState(_) => {
+            //     let id = index.as_node()?;
+            //     let cid = id.associated_meta_container();
+            //     cid.into()
+            // }
         };
 
         Some(value)
@@ -1290,5 +1294,5 @@ fn test_size() {
         "Size of TextState = {}",
         std::mem::size_of::<RichtextState>()
     );
-    println!("Size of TreeState = {}", std::mem::size_of::<TreeState>());
+    // println!("Size of TreeState = {}", std::mem::size_of::<TreeState>());
 }
